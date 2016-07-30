@@ -186,17 +186,8 @@ func openChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
 	// Populate the chunk slice.
 	chunks := make([]*chunk, len(chunkFiles))
 	chunkNext := oldest
-	done := false
 	for i, fi := range chunkFiles {
-		if done {
-			// We ran out of strictly increasing ending
-			// positions, which should ONLY happen in the
-			// last chunk file.
-			return nil, ErrCorrupt
-		}
-
-		var c chunk
-		c, done, err = openChunkFile(path, fi)
+		c, err := openChunkFile(path, fi)
 		if err != nil {
 			return nil, err
 		}
@@ -215,22 +206,13 @@ func openChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
 }
 
 // Open a chunk file
-func openChunkFile(basedir string, fi os.FileInfo) (chunk, bool, error) {
+func openChunkFile(basedir string, fi os.FileInfo) (chunk, error) {
 	chunk := chunk{path: basedir + "/" + fi.Name()}
-
-	// If 'done' gets set, then it means that chunk ending offsets
-	// have stopped strictly increasing. This happens if entries
-	// are rolled back, but not enough to delete an entire chunk:
-	// the ending offsets get reset to 0 in the metadata file in
-	// that case. This should only happen in the final chunk, so
-	// it is an error for 'done' to become true if there are
-	// further chunk files.
-	var done bool
 
 	// mmap the data file
 	mmapf, bytes, err := mmap(chunk.path)
 	if err != nil {
-		return chunk, done, &ReadError{err}
+		return chunk, &ReadError{err}
 	}
 	chunk.bytes = bytes
 	chunk.mmapf = mmapf
@@ -238,12 +220,12 @@ func openChunkFile(basedir string, fi os.FileInfo) (chunk, bool, error) {
 	// read the ending address metadata
 	mfile, err := os.Open(metaFilePath(chunk))
 	if err != nil {
-		return chunk, done, &ReadError{err}
+		return chunk, &ReadError{err}
 	}
 	defer mfile.Close()
 	prior := int32(-1)
 	if err := binary.Read(mfile, binary.LittleEndian, &chunk.oldest); err != nil {
-		return chunk, done, ErrCorrupt
+		return chunk, ErrCorrupt
 	}
 	for {
 		var this int32
@@ -251,18 +233,17 @@ func openChunkFile(basedir string, fi os.FileInfo) (chunk, bool, error) {
 			if err == io.EOF {
 				break
 			}
-			return chunk, done, ErrCorrupt
+			return chunk, ErrCorrupt
 		}
 		if this <= prior {
-			done = true
-			break
+			return chunk, ErrCorrupt
 		}
 		chunk.ends = append(chunk.ends, this)
 		prior = this
 	}
 
 	chunk.next = chunk.oldest + uint64(len(chunk.ends))
-	return chunk, done, nil
+	return chunk, nil
 }
 
 func (db *chunkSliceDB) Append(entry []byte) error {
@@ -383,7 +364,7 @@ func (db *chunkSliceDB) newChunk() error {
 	if err != nil {
 		return err
 	}
-	c, _, err := openChunkFile(db.path, fi)
+	c, err := openChunkFile(db.path, fi)
 	if err != nil {
 		return err
 	}
