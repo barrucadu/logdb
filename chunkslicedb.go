@@ -58,6 +58,8 @@ type chunk struct {
 	oldest uint64
 
 	newest uint64
+
+	dirty bool
 }
 
 // Delete the files associated with a chunk.
@@ -264,6 +266,10 @@ func (db *chunkSliceDB) truncate(newOldestID uint64, newNewestID uint64) error {
 	for i := len(db.chunks) - 1; i > 0 && db.chunks[i].newest > newNewestID; i-- {
 		c := db.chunks[i]
 		c.ends = c.ends[0 : c.newest-newNewestID]
+		if !c.dirty {
+			c.dirty = true
+			db.syncDirty = append(db.syncDirty, i)
+		}
 	}
 
 	db.sinceLastSync += newOldestID - db.oldest
@@ -349,6 +355,7 @@ func (db *chunkSliceDB) sync(acquireLock bool) error {
 		if err := writeFile(db.chunks[i].path+"-meta", db.chunks[i].ends); err != nil {
 			return &SyncError{err}
 		}
+		db.chunks[i].dirty = false
 	}
 
 	// Write the oldest entry ID.
