@@ -27,7 +27,7 @@ type chunkSliceDB struct {
 
 	chunkSize uint32
 
-	chunks []chunk
+	chunks []*chunk
 
 	oldest uint64
 
@@ -53,8 +53,7 @@ type chunk struct {
 	// at offset 0 (and there are no gaps). Ending addresses
 	// cannot be calculated from starting addresses, unless the
 	// ending address of the final entry is stored as well.
-	ends  []int32
-	endsf *os.File
+	ends []int32
 
 	oldest uint64
 
@@ -66,7 +65,7 @@ func (c *chunk) closeAndRemove() error {
 	if err := closeAndRemove(c.mmapf); err != nil {
 		return err
 	}
-	return closeAndRemove(c.endsf)
+	return os.Remove(c.path + "-meta")
 }
 
 // fileInfoSlice implements nice sorting for 'os.FileInfo': first
@@ -117,7 +116,7 @@ func openChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
 	sort.Sort(fileInfoSlice(chunkFiles))
 
 	// Populate the chunk slice.
-	chunks := make([]chunk, len(chunkFiles))
+	chunks := make([]*chunk, len(chunkFiles))
 	chunkOldest := oldest
 	chunkNewest := oldest
 	done := false
@@ -131,10 +130,12 @@ func openChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
 			chunkOldest = 1 + chunks[i-1].newest
 		}
 
-		chunks[i], done, err = openChunkFile(fi, chunkOldest)
+		var c chunk
+		c, done, err = openChunkFile(fi, chunkOldest)
 		if err != nil {
 			return nil, err
 		}
+		chunks[i] = &c
 		chunkNewest = chunkOldest + uint64(len(chunks[i].ends))
 	}
 
@@ -177,7 +178,6 @@ func openChunkFile(fi os.FileInfo, chunkOldest uint64) (chunk, bool, error) {
 	if err != nil {
 		return chunk, done, &ReadError{err}
 	}
-	chunk.endsf = mfile
 	prior := int32(-1)
 	for {
 		var this int32
@@ -260,6 +260,12 @@ func (db *chunkSliceDB) truncate(newOldestID uint64, newNewestID uint64) error {
 		return ErrIDOutOfRange
 	}
 
+	// Remove the metadata for any entries being rolled back.
+	for i := len(db.chunks) - 1; i > 0 && db.chunks[i].newest > newNewestID; i-- {
+		c := db.chunks[i]
+		c.ends = c.ends[0 : c.newest-newNewestID]
+	}
+
 	db.sinceLastSync += newOldestID - db.oldest
 	db.sinceLastSync += db.newest - newNewestID
 	db.oldest = newOldestID
@@ -340,7 +346,7 @@ func (db *chunkSliceDB) sync(acquireLock bool) error {
 		if err := fsync(db.chunks[i].mmapf); err != nil {
 			return &SyncError{err}
 		}
-		if err := fsync(db.chunks[i].endsf); err != nil {
+		if err := writeFile(db.chunks[i].path+"-meta", db.chunks[i].ends); err != nil {
 			return &SyncError{err}
 		}
 	}
