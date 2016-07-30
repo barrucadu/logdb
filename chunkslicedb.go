@@ -336,6 +336,13 @@ func (db *chunkSliceDB) append(entry []byte) error {
 		lastChunk.bytes[start+int32(i)] = b
 	}
 	lastChunk.ends = append(lastChunk.ends, end)
+
+	// Increment twice at the first entry, to go from 0 (nothing
+	// in database) to 2 (ID after entry 1)
+	if db.next == 0 {
+		lastChunk.next++
+		db.next++
+	}
 	lastChunk.next++
 	db.next++
 
