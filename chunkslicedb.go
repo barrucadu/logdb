@@ -265,10 +265,7 @@ func openChunkFile(basedir string, fi os.FileInfo) (chunk, bool, error) {
 }
 
 func (db *chunkSliceDB) Append(entry []byte) error {
-	db.rwlock.Lock()
-	defer db.rwlock.Unlock()
-
-	return db.append(entry)
+	return defaultAppend(db, entry)
 }
 
 func (db *chunkSliceDB) AppendValue(value interface{}) error {

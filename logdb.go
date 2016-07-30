@@ -301,6 +301,10 @@ func Open(path string) (LogDB, error) {
 	}
 }
 
+func defaultAppend(db LogDB, entry []byte) error {
+	return db.AppendEntries([][]byte{entry})
+}
+
 // Like 'Append', but sends its argument through
 // 'encoding/binary.Write'.
 func defaultAppendValue(db LogDB, value interface{}) error {
