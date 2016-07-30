@@ -35,6 +35,7 @@ type chunkSliceDB struct {
 
 	syncEvery     int
 	sinceLastSync uint
+	syncDirty     []int
 }
 
 // A chunk is one memory-mapped file.
@@ -42,6 +43,7 @@ type chunk struct {
 	path string
 
 	bytes []byte
+	mmapf os.File
 
 	// One past the ending addresses of entries in the 'bytes'
 	// slice.
@@ -51,7 +53,8 @@ type chunk struct {
 	// at offset 0 (and there are no gaps). Ending addresses
 	// cannot be calculated from starting addresses, unless the
 	// ending address of the final entry is stored as well.
-	ends []int32
+	ends  []int32
+	endsf os.File
 
 	oldest uint64
 
@@ -154,17 +157,19 @@ func openChunkFile(fi os.FileInfo, chunkOldest uint64) (chunk, bool, error) {
 	var done bool
 
 	// mmap the data file
-	bytes, err := mmap(fi.Name())
+	mmapf, bytes, err := mmap(fi.Name())
 	if err != nil {
 		return chunk, done, &ReadError{err}
 	}
 	chunk.bytes = bytes
+	chunk.mmapf = *mmapf
 
 	// read the ending address metadata
 	mfile, err := os.Open(fi.Name() + "-meta")
 	if err != nil {
 		return chunk, done, &ReadError{err}
 	}
+	chunk.endsf = *mfile
 	prior := int32(-1)
 	for {
 		var this int32
@@ -266,7 +271,25 @@ func (db *chunkSliceDB) Sync() error {
 	db.rwlock.RLock()
 	defer db.rwlock.RUnlock()
 
-	panic("unimplemented")
+	for _, i := range db.syncDirty {
+		// To ensure ACID, sync the data first and only then
+		// the metadata. This means that if there is a failure
+		// between the two syncs, even if the newly-written
+		// data is corrupt, there will be no metadata
+		// referring to it, and so it will be invisible to the
+		// database when next opened.
+		if err := fsync(db.chunks[i].mmapf); err != nil {
+			return &SyncError{err}
+		}
+		if err := fsync(db.chunks[i].endsf); err != nil {
+			return &SyncError{err}
+		}
+	}
+
+	db.syncDirty = nil
+	db.sinceLastSync = 0
+
+	return nil
 }
 
 func (db *chunkSliceDB) OldestID() uint64 {

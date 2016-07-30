@@ -43,20 +43,21 @@ func readFile(path string, data interface{}) error {
 }
 
 // Memory-map the given file.
-func mmap(path string) ([]byte, error) {
+func mmap(path string) (*os.File, []byte, error) {
 	fi, err := os.Stat(path)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if fi.IsDir() {
 		// Should never happen if this function is called correctly.
-		return nil, errors.New("tried to mmap a directory")
+		return nil, nil, errors.New("tried to mmap a directory")
 	}
 
-	fd, err := syscall.Open(fi.Name(), syscall.O_RDWR, 0644)
+	f, err := os.OpenFile(fi.Name(), syscall.O_RDWR, 0644)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return syscall.Mmap(fd, 0, int(fi.Size()), syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
+	bytes, err := syscall.Mmap(int(f.Fd()), 0, int(fi.Size()), syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
+	return f, bytes, err
 }
