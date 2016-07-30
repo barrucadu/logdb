@@ -207,6 +207,10 @@ func (db *chunkSliceDB) Append(entry []byte) error {
 	return db.append(entry)
 }
 
+func (db *chunkSliceDB) AppendValue(value interface{}) error {
+	return defaultAppendValue(db, value)
+}
+
 func (db *chunkSliceDB) AppendEntries(entries [][]byte) error {
 	db.rwlock.Lock()
 	defer db.rwlock.Unlock()
@@ -230,6 +234,10 @@ func (db *chunkSliceDB) AppendEntries(entries [][]byte) error {
 	}
 
 	return db.SetSync(originalSyncAfter)
+}
+
+func (db *chunkSliceDB) AppendValues(values []interface{}) error {
+	return defaultAppendValues(db, values)
 }
 
 func (db *chunkSliceDB) append(entry []byte) error {
@@ -354,6 +362,10 @@ func (db *chunkSliceDB) Get(id uint64) ([]byte, error) {
 		out[i-start] = chunk.bytes[i]
 	}
 	return out, nil
+}
+
+func (db *chunkSliceDB) GetValue(id uint64, data interface{}) error {
+	return defaultGetValue(db, id, data)
 }
 
 func (db *chunkSliceDB) Forget(newOldestID uint64) error {
