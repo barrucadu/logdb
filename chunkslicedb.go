@@ -47,11 +47,7 @@ type chunk struct {
 	newest uint64
 }
 
-func createChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
-	panic("unimplemented")
-}
-
-func openChunkSliceDB(path string) (*chunkSliceDB, error) {
+func openChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
 	panic("unimplemented")
 }
 

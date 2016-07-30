@@ -3,7 +3,11 @@
 // removal from either end of the log.
 package logdb
 
-import "errors"
+import (
+	"encoding/binary"
+	"errors"
+	"os"
+)
 
 var (
 	// ErrIDOutOfRange means that the requested ID is not present
@@ -100,20 +104,109 @@ type LogDB interface {
 // calls to 'Forget' and 'Rollback'), so a larger chunk size means
 // fewer files, but longer persistence.
 //
+// The on-disk format is determined by the version, but there are some
+// commonalities: a database lives in a directory; there is a
+// "version" file containing the version number; there is also a
+// "chunk_size" file containing the chunk size; both the version
+// number and chunk size are written out in little-endian byte order.
+//
 // Returns 'ErrUnknownVersion' if the version number is not valid, a
-// 'PathError' value if the directory could not be created, and
-// 'ErrPathExists' if the directory already exists.
+// 'PathError' value if the directory could not be created,
+// 'ErrPathExists' if the directory already exists, and a 'WriteError'
+// value if the initial metadata files could not be created.
 func Create(path string, version uint16, chunkSize uint32) (LogDB, error) {
-	panic("unimplemented")
+	// Check the version number.
+	foundV := false
+	for _, v := range Versions {
+		if v == version {
+			foundV = true
+			break
+		}
+	}
+	if !foundV {
+		return nil, ErrUnknownVersion
+	}
+
+	// Check if it already exists.
+	if stat, err := os.Stat(path); err != nil && stat.IsDir() {
+		return nil, ErrPathExists
+	}
+
+	// Create the directory.
+	if err := os.MkdirAll(path, os.ModeDir|0755); err != nil {
+		return nil, &PathError{err}
+	}
+
+	// Write the version file
+	verfile, err := os.Create(path + "/version")
+	if err != nil {
+		return nil, &WriteError{err}
+	}
+	if err := binary.Write(verfile, binary.LittleEndian, version); err != nil {
+		return nil, &WriteError{err}
+	}
+
+	// Write the chunk size file
+	csfile, err := os.Create(path + "/chunk_size")
+	if err != nil {
+		return nil, &WriteError{err}
+	}
+	if err := binary.Write(csfile, binary.LittleEndian, chunkSize); err != nil {
+		return nil, &WriteError{err}
+	}
+
+	switch version {
+	case 0:
+		return openChunkSliceDB(path, chunkSize)
+	default:
+		// Should never reach here due to the guard at the beginning.
+		return nil, ErrUnknownVersion
+	}
 }
 
 // Open opens the database in the given path, detecting the format
 // version automatically.
+//
+// It is not safe to have multiple open references to the same
+// database at the same time, across any number of processes.
+// Concurrent usage of one open reference in a single process is safe.
 //
 // Returns 'ErrPathDoesntExist' if the directory does not exist, a
 // 'ReadError' value if the directory cannot be read,
 // 'ErrUnknownVersion' if the detected version is not valid, and
 // 'ErrCorrupt' if the database could be understood.
 func Open(path string) (LogDB, error) {
-	panic("unimplemented")
+	// Check if it's a directory.
+	stat, err := os.Stat(path)
+	if err != nil || !stat.IsDir() {
+		return nil, ErrPathDoesntExist
+	}
+
+	// Read the "version" file.
+	vfile, err := os.Open(path + "/version")
+	if err != nil {
+		return nil, &ReadError{err}
+	}
+	var version uint16
+	if err := binary.Read(vfile, binary.LittleEndian, &version); err != nil {
+		return nil, &ReadError{err}
+	}
+
+	// Read the "chunk_size" file.
+	csfile, err := os.Open(path + "/chunk_size")
+	if err != nil {
+		return nil, &ReadError{err}
+	}
+	var chunkSize uint32
+	if err := binary.Read(csfile, binary.LittleEndian, &chunkSize); err != nil {
+		return nil, &ReadError{err}
+	}
+
+	// Open the database.
+	switch version {
+	case 0:
+		return openChunkSliceDB(path, chunkSize)
+	default:
+		return nil, ErrUnknownVersion
+	}
 }
