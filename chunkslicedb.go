@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -205,7 +206,82 @@ func (db *chunkSliceDB) Append(entry []byte) error {
 	db.rwlock.Lock()
 	defer db.rwlock.Unlock()
 
-	panic("unimplemented")
+	// If there are no chunks, create a new one.
+	if len(db.chunks) == 0 {
+		if err := db.newChunk(); err != nil {
+			return &WriteError{err}
+		}
+	}
+
+	lastChunk := db.chunks[len(db.chunks)-1]
+
+	// If the last chunk doesn't have the space for this entry,
+	// create a new one.
+	if len(lastChunk.ends) > 0 {
+		lastEnd := lastChunk.ends[len(lastChunk.ends)-1]
+		if db.chunkSize-uint32(lastEnd) < uint32(len(entry)) {
+			if err := db.newChunk(); err != nil {
+				return &WriteError{err}
+			}
+			lastChunk = db.chunks[len(db.chunks)-1]
+		}
+	}
+
+	// Add the entry to the last chunk
+	var start int32
+	if len(lastChunk.ends) > 0 {
+		start = lastChunk.ends[len(lastChunk.ends)-1]
+	}
+	end := start + int32(len(entry))
+	for i, b := range entry {
+		lastChunk.bytes[start+int32(i)] = b
+	}
+	lastChunk.ends = append(lastChunk.ends, end)
+	db.newest++
+
+	// Mark the current chunk as dirty and perform a periodic sync.
+	db.sinceLastSync++
+	if !lastChunk.dirty {
+		lastChunk.dirty = true
+		db.syncDirty = append(db.syncDirty, len(db.chunks)-1)
+	}
+	return db.periodicSync(true)
+}
+
+// Add a new chunk to the database.
+func (db *chunkSliceDB) newChunk() error {
+	chunkFile := "chunk-0"
+
+	// Filename is "chunk-<1 + last chunk file name>"
+	if len(db.chunks) > 0 {
+		strnum := db.chunks[len(db.chunks)-1].path[len("chunk-"):]
+		num, err := strconv.Atoi(strnum)
+		if err != nil {
+			return err
+		}
+		chunkFile = "chunk-" + strconv.Itoa(num+1)
+	}
+
+	// Create the chunk files.
+	if err := createFile(db.path + "/" + chunkFile + "-meta"); err != nil {
+		return err
+	}
+	if err := createFileAtSize(db.path+"/"+chunkFile, db.chunkSize); err != nil {
+		return err
+	}
+
+	// Open the newly-created chunk file.
+	fi, err := os.Stat(db.path + "/" + chunkFile)
+	if err != nil {
+		return err
+	}
+	c, _, err := openChunkFile(db.path, fi, db.newest+1)
+	if err != nil {
+		return err
+	}
+	db.chunks = append(db.chunks, &c)
+
+	return nil
 }
 
 func (db *chunkSliceDB) Get(id uint64) ([]byte, error) {
