@@ -376,15 +376,14 @@ func (db *chunkSliceDB) GetValue(id uint64, data interface{}) error {
 }
 
 func (db *chunkSliceDB) Forget(newOldestID uint64) error {
-	return db.truncate(newOldestID, db.next)
+	return defaultForget(db, newOldestID)
 }
 
 func (db *chunkSliceDB) Rollback(newNextID uint64) error {
-	return db.truncate(db.oldest, newNextID)
+	return defaultRollback(db, newNextID)
 }
 
-// Truncate the database at both ends.
-func (db *chunkSliceDB) truncate(newOldestID uint64, newNextID uint64) error {
+func (db *chunkSliceDB) Truncate(newOldestID uint64, newNextID uint64) error {
 	db.rwlock.Lock()
 	defer db.rwlock.Unlock()
 

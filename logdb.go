@@ -158,6 +158,12 @@ type LogDB interface {
 	// synchronisation failed.
 	Rollback(newNextID uint64) error
 
+	// Perform a combination 'Forget'/'Rollback' operation, this
+	// is atomic.
+	//
+	// Returns the same errors as 'Forget' and 'Rollback'.
+	Truncate(newOldestID, newNextID uint64) error
+
 	// Clone copies a database to a new path, using the given
 	// format version and chunk size. This may be more efficient
 	// than simply copying every entry.
@@ -330,4 +336,12 @@ func defaultGetValue(db LogDB, id uint64, value interface{}) error {
 		return &BinaryError{err}
 	}
 	return nil
+}
+
+func defaultForget(db LogDB, newOldestID uint64) error {
+	return db.Truncate(newOldestID, db.NextID())
+}
+
+func defaultRollback(db LogDB, newNextID uint64) error {
+	return db.Truncate(db.OldestID(), newNextID)
 }
