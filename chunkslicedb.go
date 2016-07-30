@@ -204,6 +204,35 @@ func (db *chunkSliceDB) Append(entry []byte) error {
 	db.rwlock.Lock()
 	defer db.rwlock.Unlock()
 
+	return db.append(entry)
+}
+
+func (db *chunkSliceDB) AppendEntries(entries [][]byte) error {
+	db.rwlock.Lock()
+	defer db.rwlock.Unlock()
+
+	originalNext := db.NextID()
+	originalSyncAfter := db.syncEvery
+
+	// Disable periodic syncing while appending.
+	if err := db.SetSync(-1); err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		if err := db.append(entry); err != nil {
+			// Rollback on error.
+			if err := db.Rollback(originalNext); err != nil {
+				return err
+			}
+			return err
+		}
+	}
+
+	return db.SetSync(originalSyncAfter)
+}
+
+func (db *chunkSliceDB) append(entry []byte) error {
 	// If there are no chunks, create a new one.
 	if len(db.chunks) == 0 {
 		if err := db.newChunk(); err != nil {

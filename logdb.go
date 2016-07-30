@@ -76,6 +76,12 @@ type LogDB interface {
 	// synchronisation failed.
 	Append(entry []byte) error
 
+	// Atomically write a collection of new entries to the log.
+	//
+	// Returns the same errors as 'Append'. If any entry fails to
+	// append, the log is rolled back to the original state.
+	AppendEntries(entries [][]byte) error
+
 	// Get looks up an entry by ID.
 	//
 	// Returns 'ErrIDOutOfRange' if the requested ID is lesser
