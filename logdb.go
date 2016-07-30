@@ -52,13 +52,21 @@ type PathError struct{ Err error }
 func (e *PathError) Error() string          { return e.Err.Error() }
 func (e *PathError) WrappedErrors() []error { return []error{e.Err} }
 
+// SyncError means that a a file could not be synced to disk. It wraps
+// the actual error.
+type SyncError struct{ Err error }
+
+func (e *SyncError) Error() string          { return e.Err.Error() }
+func (e *SyncError) WrappedErrors() []error { return []error{e.Err} }
+
 // A LogDB is a reference to an efficient log-structured database
 // providing ACID consistency guarantees.
 type LogDB interface {
 	// Append writes a new entry to the log.
 	//
 	// Returns a 'WriteError' value if the database files could
-	// not be written to.
+	// not be written to, and a 'SyncError' value if a periodic
+	// synchronisation failed.
 	Append(entry []byte) error
 
 	// Get looks up an entry by ID.
@@ -70,20 +78,22 @@ type LogDB interface {
 	// Forget removes entries from the end of the log.
 	//
 	// Returns 'ErrIDOutOfRange' if the new oldest ID is lesser
-	// than the current oldest.
+	// than the current oldest, and a 'SyncError' value if a
+	// periodic synchronisation failed.
 	Forget(newOldestID uint64) error
 
 	// Rollback removes entries from the head of the log.
 	//
 	// Returns 'ErrIDOutOfRange' if the new newest ID is greater
-	// than the current newest.
+	// than the current newest, and a 'SyncError' value if a
+	// periodic synchronisation failed.
 	Rollback(newNewestID uint64) error
 
 	// Clone copies a database to a new path, using the given
 	// format version and chunk size. This may be more efficient
 	// than simply copying every entry.
 	//
-	// Returns the same errors as 'Create'.
+	// Returns the same errors as 'Create' and 'Sync'.
 	Clone(path string, version uint16, chunkSize uint32) (LogDB, error)
 
 	// Synchronise the data to disk after touching (appending,
@@ -93,10 +103,15 @@ type LogDB interface {
 	//
 	// <0 disables periodic syncing, and 'Sync' must be called
 	// instead. The default value is 100.
-	SetSync(every int)
+	//
+	// Returns a 'SyncError' value if this triggered an immediate
+	// synchronisation, which failed.
+	SetSync(every int) error
 
 	// Synchronise the data to disk now.
-	Sync()
+	//
+	// May return a SyncError value.
+	Sync() error
 
 	// OldestID gets the ID of the oldest log entry.
 	OldestID() uint64

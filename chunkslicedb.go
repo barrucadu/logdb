@@ -251,16 +251,18 @@ func (db *chunkSliceDB) Clone(path string, version uint16, chunkSize uint32) (Lo
 	panic("unimplemented")
 }
 
-func (db *chunkSliceDB) SetSync(every int) {
+func (db *chunkSliceDB) SetSync(every int) error {
+	db.syncEvery = every
+
 	// Sync immediately if the number of unsynced entries is now
 	// above the threshold
 	if every >= 0 && db.sinceLastSync > uint(every) {
-		db.Sync()
+		return db.Sync()
 	}
-	db.syncEvery = every
+	return nil
 }
 
-func (db *chunkSliceDB) Sync() {
+func (db *chunkSliceDB) Sync() error {
 	db.rwlock.RLock()
 	defer db.rwlock.RUnlock()
 
