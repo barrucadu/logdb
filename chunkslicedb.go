@@ -256,7 +256,7 @@ func (db *chunkSliceDB) newChunk() error {
 
 	// Filename is "chunk-<1 + last chunk file name>"
 	if len(db.chunks) > 0 {
-		strnum := db.chunks[len(db.chunks)-1].path[len("chunk-"):]
+		strnum := strings.TrimPrefix(db.chunks[len(db.chunks)-1].path, db.path+"/"+"chunk-")
 		num, err := strconv.Atoi(strnum)
 		if err != nil {
 			return err
