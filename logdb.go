@@ -4,7 +4,6 @@
 package logdb
 
 import (
-	"encoding/binary"
 	"errors"
 	"os"
 )
@@ -138,20 +137,12 @@ func Create(path string, version uint16, chunkSize uint32) (LogDB, error) {
 	}
 
 	// Write the version file
-	verfile, err := os.Create(path + "/version")
-	if err != nil {
-		return nil, &WriteError{err}
-	}
-	if err := binary.Write(verfile, binary.LittleEndian, version); err != nil {
+	if err := writeFile(path+"/version", version, true); err != nil {
 		return nil, &WriteError{err}
 	}
 
 	// Write the chunk size file
-	csfile, err := os.Create(path + "/chunk_size")
-	if err != nil {
-		return nil, &WriteError{err}
-	}
-	if err := binary.Write(csfile, binary.LittleEndian, chunkSize); err != nil {
+	if err := writeFile(path+"/chunk_size", chunkSize, true); err != nil {
 		return nil, &WriteError{err}
 	}
 
@@ -183,22 +174,14 @@ func Open(path string) (LogDB, error) {
 	}
 
 	// Read the "version" file.
-	vfile, err := os.Open(path + "/version")
-	if err != nil {
-		return nil, &ReadError{err}
-	}
 	var version uint16
-	if err := binary.Read(vfile, binary.LittleEndian, &version); err != nil {
+	if err := readFile(path+"/version", &version); err != nil {
 		return nil, &ReadError{err}
 	}
 
 	// Read the "chunk_size" file.
-	csfile, err := os.Open(path + "/chunk_size")
-	if err != nil {
-		return nil, &ReadError{err}
-	}
 	var chunkSize uint32
-	if err := binary.Read(csfile, binary.LittleEndian, &chunkSize); err != nil {
+	if err := readFile(path+"/chunk_size", &chunkSize); err != nil {
 		return nil, &ReadError{err}
 	}
 

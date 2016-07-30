@@ -8,7 +8,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"syscall"
 )
 
 // chunkSliceDB is the main LogDB instance, representing a database as
@@ -76,11 +75,7 @@ func (fis fileInfoSlice) Less(i, j int) bool {
 
 func createChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
 	// Write the "oldest" file.
-	csfile, err := os.Create(path + "/oldest")
-	if err != nil {
-		return nil, &WriteError{err}
-	}
-	if err := binary.Write(csfile, binary.LittleEndian, uint64(0)); err != nil {
+	if err := writeFile(path+"/oldest", uint64(0), true); err != nil {
 		return nil, &WriteError{err}
 	}
 
@@ -89,12 +84,8 @@ func createChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
 
 func openChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
 	// Read the "oldest" file.
-	ofile, err := os.Open(path + "/oldest")
-	if err != nil {
-		return nil, &ReadError{err}
-	}
 	var oldest uint64
-	if err := binary.Read(ofile, binary.LittleEndian, &oldest); err != nil {
+	if err := readFile(path+"/oldest", &oldest); err != nil {
 		return nil, &ReadError{err}
 	}
 
@@ -125,11 +116,7 @@ func openChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
 		}
 
 		// mmap the data file
-		fd, err := syscall.Open(fi.Name(), syscall.O_RDWR, 0644)
-		if err != nil {
-			return nil, &ReadError{err}
-		}
-		bytes, err := syscall.Mmap(fd, 0, int(fi.Size()), syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
+		bytes, err := mmap(fi.Name())
 		if err != nil {
 			return nil, &ReadError{err}
 		}
