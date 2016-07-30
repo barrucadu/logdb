@@ -275,6 +275,13 @@ func (db *chunkSliceDB) append(entry []byte) error {
 	lastChunk.next++
 	db.next++
 
+	// If this is the first entry ever, set the oldest ID to 1
+	// (IDs start from 1, not 0)
+	if db.oldest == 0 {
+		db.oldest = 1
+		lastChunk.oldest = 1
+	}
+
 	// Mark the current chunk as dirty and perform a periodic sync.
 	db.sinceLastSync++
 	if !lastChunk.dirty {
