@@ -281,7 +281,7 @@ func (db *chunkSliceDB) AppendEntries(entries [][]byte) error {
 	for _, entry := range entries {
 		if err := db.append(entry); err != nil {
 			// Rollback on error.
-			if rerr := db.Rollback(originalNext); rerr != nil {
+			if rerr := db.truncate(db.oldest, originalNext); rerr != nil {
 				return &AtomicityError{AppendErr: err, RollbackErr: rerr}
 			}
 			return err
@@ -440,10 +440,13 @@ func (db *chunkSliceDB) Rollback(newNextID uint64) error {
 	return defaultRollback(db, newNextID)
 }
 
-func (db *chunkSliceDB) Truncate(newOldestID uint64, newNextID uint64) error {
+func (db *chunkSliceDB) Truncate(newOldestID, newNextID uint64) error {
 	db.rwlock.Lock()
 	defer db.rwlock.Unlock()
+	return db.truncate(newOldestID, newNextID)
+}
 
+func (db *chunkSliceDB) truncate(newOldestID, newNextID uint64) error {
 	if newOldestID < db.oldest || newNextID > db.next {
 		return ErrIDOutOfRange
 	}
