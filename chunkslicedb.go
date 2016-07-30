@@ -133,7 +133,7 @@ func openChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
 		}
 
 		var c chunk
-		c, done, err = openChunkFile(fi, chunkOldest)
+		c, done, err = openChunkFile(path, fi, chunkOldest)
 		if err != nil {
 			return nil, err
 		}
@@ -152,9 +152,9 @@ func openChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
 }
 
 // Open a chunk file
-func openChunkFile(fi os.FileInfo, chunkOldest uint64) (chunk, bool, error) {
+func openChunkFile(basedir string, fi os.FileInfo, chunkOldest uint64) (chunk, bool, error) {
 	chunk := chunk{
-		path:   fi.Name(),
+		path:   basedir + "/" + fi.Name(),
 		oldest: chunkOldest,
 	}
 
@@ -168,7 +168,7 @@ func openChunkFile(fi os.FileInfo, chunkOldest uint64) (chunk, bool, error) {
 	var done bool
 
 	// mmap the data file
-	mmapf, bytes, err := mmap(fi.Name())
+	mmapf, bytes, err := mmap(chunk.path)
 	if err != nil {
 		return chunk, done, &ReadError{err}
 	}
@@ -176,7 +176,7 @@ func openChunkFile(fi os.FileInfo, chunkOldest uint64) (chunk, bool, error) {
 	chunk.mmapf = mmapf
 
 	// read the ending address metadata
-	mfile, err := os.Open(fi.Name() + "-meta")
+	mfile, err := os.Open(basedir + "/" + fi.Name() + "-meta")
 	if err != nil {
 		return chunk, done, &ReadError{err}
 	}

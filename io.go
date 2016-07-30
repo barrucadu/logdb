@@ -52,7 +52,7 @@ func mmap(path string) (*os.File, []byte, error) {
 		return nil, nil, errors.New("tried to mmap a directory")
 	}
 
-	f, err := os.OpenFile(fi.Name(), syscall.O_RDWR, 0644)
+	f, err := os.OpenFile(path, os.O_RDWR, 0644)
 	if err != nil {
 		return nil, nil, err
 	}
