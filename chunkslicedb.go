@@ -572,3 +572,18 @@ func (db *chunkSliceDB) OldestID() uint64 {
 func (db *chunkSliceDB) NextID() uint64 {
 	return db.next
 }
+
+func (db *chunkSliceDB) Close() error {
+	db.rwlock.Lock()
+	defer db.rwlock.Unlock()
+
+	// First sync everything
+	err := db.sync(false)
+
+	// Then close the open files
+	for _, c := range db.chunks {
+		_ = c.mmapf.Close()
+	}
+
+	return err
+}

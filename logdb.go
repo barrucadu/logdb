@@ -198,6 +198,12 @@ type LogDB interface {
 	// As IDs are strictly increasing, if this is nonzero, the ID
 	// of the newest entry is NextID()-1.
 	NextID() uint64
+
+	// Sync the database and close any open files. It is an error
+	// to try to use a database after closing it.
+	//
+	// May return a 'SyncError' value.
+	Close() error
 }
 
 // Create makes a new database with the given format version.
