@@ -210,7 +210,7 @@ func Create(path string, version uint16, chunkSize uint32) (LogDB, error) {
 func Open(path string) (LogDB, error) {
 	// Check if it's a directory.
 	stat, _ := os.Stat(path)
-	if stat != nil || !stat.IsDir() {
+	if stat != nil && !stat.IsDir() {
 		return nil, ErrPathDoesntExist
 	}
 
