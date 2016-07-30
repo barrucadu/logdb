@@ -1,6 +1,15 @@
 package logdb
 
-import "sync"
+import (
+	"encoding/binary"
+	"io"
+	"io/ioutil"
+	"os"
+	"sort"
+	"strings"
+	"sync"
+	"syscall"
+)
 
 // chunkSliceDB is the main LogDB instance, representing a database as
 // a slice of memory-mapped files.
@@ -40,15 +49,132 @@ type chunk struct {
 	// at offset 0 (and there are no gaps). Ending addresses
 	// cannot be calculated from starting addresses, unless the
 	// ending address of the final entry is stored as well.
-	ends []int
+	ends []int32
 
 	oldest uint64
 
 	newest uint64
 }
 
+// fileInfoSlice implements nice sorting for 'os.FileInfo': first
+// compare filenames by length, and then lexicographically.
+type fileInfoSlice []os.FileInfo
+
+func (fis fileInfoSlice) Len() int {
+	return len(fis)
+}
+
+func (fis fileInfoSlice) Swap(i, j int) {
+	fis[i], fis[j] = fis[j], fis[i]
+}
+
+func (fis fileInfoSlice) Less(i, j int) bool {
+	ni := fis[i].Name()
+	nj := fis[j].Name()
+	return len(ni) < len(nj) || ni < nj
+}
+
+func createChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
+	// Write the "oldest" file.
+	csfile, err := os.Create(path + "/oldest")
+	if err != nil {
+		return nil, &WriteError{err}
+	}
+	if err := binary.Write(csfile, binary.LittleEndian, uint64(0)); err != nil {
+		return nil, &WriteError{err}
+	}
+
+	return &chunkSliceDB{path: path, chunkSize: chunkSize}, nil
+}
+
 func openChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
-	panic("unimplemented")
+	// Read the "oldest" file.
+	ofile, err := os.Open(path + "/oldest")
+	if err != nil {
+		return nil, &ReadError{err}
+	}
+	var oldest uint64
+	if err := binary.Read(ofile, binary.LittleEndian, &oldest); err != nil {
+		return nil, &ReadError{err}
+	}
+
+	// Get all the chunk files.
+	var chunkFiles []os.FileInfo
+	fis, err := ioutil.ReadDir(path)
+	if err != nil {
+		return nil, &ReadError{err}
+	}
+	for _, fi := range fis {
+		if !fi.IsDir() && strings.HasPrefix(fi.Name(), "chunk-") && !strings.HasSuffix(fi.Name(), "-meta") {
+			chunkFiles = append(chunkFiles, fi)
+		}
+	}
+	sort.Sort(fileInfoSlice(chunkFiles))
+
+	// Populate the chunk slice.
+	chunks := make([]chunk, len(chunkFiles))
+	chunkOldest := oldest
+	chunkNewest := oldest
+	done := false
+	for i, fi := range chunkFiles {
+		if done {
+			// We ran out of strictly increasing ending
+			// positions, which should ONLY happen in the
+			// last chunk file.
+			return nil, ErrCorrupt
+		}
+
+		// mmap the data file
+		fd, err := syscall.Open(fi.Name(), syscall.O_RDWR, 0644)
+		if err != nil {
+			return nil, &ReadError{err}
+		}
+		bytes, err := syscall.Mmap(fd, 0, int(fi.Size()), syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
+		if err != nil {
+			return nil, &ReadError{err}
+		}
+
+		// read the ending address metadata
+		mfile, err := os.Open(fi.Name() + "-meta")
+		if err != nil {
+			return nil, &ReadError{err}
+		}
+		var ends []int32
+		prior := int32(-1)
+		for {
+			var this int32
+			if err := binary.Read(mfile, binary.LittleEndian, &this); err != nil {
+				if err == io.EOF {
+					break
+				}
+				return nil, ErrCorrupt
+			}
+			if this <= prior {
+				done = true
+				break
+			}
+			ends = append(ends, this)
+			prior = this
+		}
+
+		chunkNewest = chunkOldest + uint64(len(ends))
+		chunks[i] = chunk{
+			path:   fi.Name(),
+			bytes:  bytes,
+			ends:   ends,
+			oldest: chunkOldest,
+			newest: chunkNewest,
+		}
+		chunkOldest++
+	}
+
+	return &chunkSliceDB{
+		path:      path,
+		chunkSize: chunkSize,
+		chunks:    chunks,
+		oldest:    oldest,
+		newest:    chunkNewest,
+	}, nil
 }
 
 func (db *chunkSliceDB) Append(entry []byte) error {
@@ -83,7 +209,7 @@ func (db *chunkSliceDB) Get(id uint64) ([]byte, error) {
 	// the relevant byte slice.
 	chunk := db.chunks[mid]
 	off := id - chunk.oldest
-	start := 0
+	start := int32(0)
 	if off > 0 {
 		start = chunk.ends[off-1]
 	}

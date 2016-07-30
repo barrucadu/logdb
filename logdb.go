@@ -157,7 +157,7 @@ func Create(path string, version uint16, chunkSize uint32) (LogDB, error) {
 
 	switch version {
 	case 0:
-		return openChunkSliceDB(path, chunkSize)
+		return createChunkSliceDB(path, chunkSize)
 	default:
 		// Should never reach here due to the guard at the beginning.
 		return nil, ErrUnknownVersion
