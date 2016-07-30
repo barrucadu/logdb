@@ -244,47 +244,51 @@ func (db *chunkSliceDB) Get(id uint64) ([]byte, error) {
 }
 
 func (db *chunkSliceDB) Forget(newOldestID uint64) error {
+	return db.truncate(newOldestID, db.newest)
+}
+
+func (db *chunkSliceDB) Rollback(newNewestID uint64) error {
+	return db.truncate(db.oldest, newNewestID)
+}
+
+// Truncate the database at both ends.
+func (db *chunkSliceDB) truncate(newOldestID uint64, newNewestID uint64) error {
 	db.rwlock.Lock()
 	defer db.rwlock.Unlock()
 
-	if newOldestID < db.oldest {
+	if newOldestID < db.oldest || newNewestID > db.newest {
 		return ErrIDOutOfRange
 	}
 
 	db.sinceLastSync += newOldestID - db.oldest
-
+	db.sinceLastSync += db.newest - newNewestID
 	db.oldest = newOldestID
+	db.newest = newNewestID
 
 	// Check if this deleted any chunks
 	first := 0
-	for _, c := range db.chunks {
-		if c.newest < newOldestID {
-			first++
-		}
+	last := len(db.chunks)
+	for ; first < len(db.chunks) && db.chunks[first].newest < newOldestID; first++ {
 	}
-	if first > 0 {
+	for ; last > 0 && db.chunks[last].oldest > newNewestID; last-- {
+	}
+
+	if first > 0 || last < len(db.chunks) {
 		// It did! Sync everything and then delete the files.
 		if err := db.sync(false); err != nil {
 			return err
 		}
 		for i, c := range db.chunks {
-			if i == first {
-				break
+			if i >= first && i < last {
+				continue
 			}
 			if err := c.closeAndRemove(); err != nil {
 				return &DeleteError{err}
 			}
 		}
-		db.chunks = db.chunks[first:]
+		db.chunks = db.chunks[first:last]
 	}
 	return db.periodicSync(false)
-}
-
-func (db *chunkSliceDB) Rollback(newNewestID uint64) error {
-	db.rwlock.Lock()
-	defer db.rwlock.Unlock()
-
-	panic("unimplemented")
 }
 
 func (db *chunkSliceDB) Clone(path string, version uint16, chunkSize uint32) (LogDB, error) {
