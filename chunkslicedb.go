@@ -240,6 +240,7 @@ func openChunkFile(basedir string, fi os.FileInfo) (chunk, bool, error) {
 	if err != nil {
 		return chunk, done, &ReadError{err}
 	}
+	defer mfile.Close()
 	prior := int32(-1)
 	if err := binary.Read(mfile, binary.LittleEndian, &chunk.oldest); err != nil {
 		return chunk, done, ErrCorrupt

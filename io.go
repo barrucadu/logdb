@@ -14,10 +14,9 @@ func createFile(path string, size uint32) error {
 	if err != nil {
 		return err
 	}
+	defer file.Close()
 
-	err = syscall.Ftruncate(int(file.Fd()), int64(size))
-	_ = file.Close()
-	return err
+	return syscall.Ftruncate(int(file.Fd()), int64(size))
 }
 
 // Write the given value to the file using little-endian byte order.
@@ -29,15 +28,13 @@ func writeFile(path string, data interface{}) error {
 	if err != nil {
 		return err
 	}
+	defer file.Close()
 
 	if err := binary.Write(file, binary.LittleEndian, data); err != nil {
-		_ = file.Close()
 		return err
 	}
 
-	err = fsync(file)
-	_ = file.Close()
-	return err
+	return fsync(file)
 }
 
 // Read data into the given pointer from the file using little-endian
@@ -47,10 +44,9 @@ func readFile(path string, data interface{}) error {
 	if err != nil {
 		return err
 	}
+	defer file.Close()
 
-	err = binary.Read(file, binary.LittleEndian, data)
-	_ = file.Close()
-	return err
+	return binary.Read(file, binary.LittleEndian, data)
 }
 
 // Memory-map the given file.
