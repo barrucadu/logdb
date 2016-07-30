@@ -1,6 +1,7 @@
 package logdb
 
 import (
+	"bytes"
 	"encoding/binary"
 	"io"
 	"io/ioutil"
@@ -120,7 +121,6 @@ func openChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
 
 	// Populate the chunk slice.
 	chunks := make([]*chunk, len(chunkFiles))
-	chunkOldest := oldest
 	chunkNext := oldest
 	done := false
 	for i, fi := range chunkFiles {
@@ -129,17 +129,15 @@ func openChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
 			// positions, which should ONLY happen in the
 			// last chunk file.
 			return nil, ErrCorrupt
-		} else if i > 0 {
-			chunkOldest = chunks[i-1].next
 		}
 
 		var c chunk
-		c, done, err = openChunkFile(path, fi, chunkOldest)
+		c, done, err = openChunkFile(path, fi)
 		if err != nil {
 			return nil, err
 		}
 		chunks[i] = &c
-		chunkNext = chunkOldest + uint64(len(chunks[i].ends))
+		chunkNext = c.oldest + uint64(len(chunks[i].ends))
 	}
 
 	return &chunkSliceDB{
@@ -153,11 +151,8 @@ func openChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
 }
 
 // Open a chunk file
-func openChunkFile(basedir string, fi os.FileInfo, chunkOldest uint64) (chunk, bool, error) {
-	chunk := chunk{
-		path:   basedir + "/" + fi.Name(),
-		oldest: chunkOldest,
-	}
+func openChunkFile(basedir string, fi os.FileInfo) (chunk, bool, error) {
+	chunk := chunk{path: basedir + "/" + fi.Name()}
 
 	// If 'done' gets set, then it means that chunk ending offsets
 	// have stopped strictly increasing. This happens if entries
@@ -182,6 +177,9 @@ func openChunkFile(basedir string, fi os.FileInfo, chunkOldest uint64) (chunk, b
 		return chunk, done, &ReadError{err}
 	}
 	prior := int32(-1)
+	if err := binary.Read(mfile, binary.LittleEndian, &chunk.oldest); err != nil {
+		return chunk, done, ErrCorrupt
+	}
 	for {
 		var this int32
 		if err := binary.Read(mfile, binary.LittleEndian, &this); err != nil {
@@ -198,7 +196,7 @@ func openChunkFile(basedir string, fi os.FileInfo, chunkOldest uint64) (chunk, b
 		prior = this
 	}
 
-	chunk.next = chunkOldest + uint64(len(chunk.ends))
+	chunk.next = chunk.oldest + uint64(len(chunk.ends))
 	return chunk, done, nil
 }
 
@@ -267,10 +265,14 @@ func (db *chunkSliceDB) newChunk() error {
 	}
 
 	// Create the chunk files.
-	if err := createFile(db.path + "/" + chunkFile + "-meta"); err != nil {
+	if err := createFile(db.path+"/"+chunkFile, db.chunkSize); err != nil {
 		return err
 	}
-	if err := createFileAtSize(db.path+"/"+chunkFile, db.chunkSize); err != nil {
+	metaBuf := new(bytes.Buffer)
+	if err := binary.Write(metaBuf, binary.LittleEndian, db.next); err != nil {
+		return err
+	}
+	if err := writeFile(db.path+"/"+chunkFile+"-meta", metaBuf.Bytes()); err != nil {
 		return err
 	}
 
@@ -279,8 +281,7 @@ func (db *chunkSliceDB) newChunk() error {
 	if err != nil {
 		return err
 	}
-	chunkOldest := db.next
-	c, _, err := openChunkFile(db.path, fi, chunkOldest)
+	c, _, err := openChunkFile(db.path, fi)
 	if err != nil {
 		return err
 	}
@@ -344,9 +345,9 @@ func (db *chunkSliceDB) truncate(newOldestID uint64, newNextID uint64) error {
 	}
 
 	// Remove the metadata for any entries being rolled back.
-	for i := len(db.chunks) - 1; i > 0 && db.chunks[i].next >= newNextID; i-- {
+	for i := len(db.chunks) - 1; i >= 0 && db.chunks[i].next >= newNextID; i-- {
 		c := db.chunks[i]
-		c.ends = c.ends[0 : c.next-newNextID]
+		c.ends = c.ends[0 : uint64(len(c.ends))-(c.next-newNextID)]
 		if !c.dirty {
 			c.dirty = true
 			db.syncDirty = append(db.syncDirty, i)
@@ -363,7 +364,7 @@ func (db *chunkSliceDB) truncate(newOldestID uint64, newNextID uint64) error {
 	last := len(db.chunks)
 	for ; first < len(db.chunks) && db.chunks[first].next < newOldestID; first++ {
 	}
-	for ; last > 0 && db.chunks[last].oldest > newNextID; last-- {
+	for ; last > 0 && db.chunks[last-1].oldest > newNextID; last-- {
 	}
 
 	if first > 0 || last < len(db.chunks) {
@@ -433,7 +434,17 @@ func (db *chunkSliceDB) sync(acquireLock bool) error {
 		if err := fsync(db.chunks[i].mmapf); err != nil {
 			return &SyncError{err}
 		}
-		if err := writeFile(db.chunks[i].path+"-meta", db.chunks[i].ends); err != nil {
+
+		metaBuf := new(bytes.Buffer)
+		if err := binary.Write(metaBuf, binary.LittleEndian, db.chunks[i].oldest); err != nil {
+			return err
+		}
+		for _, end := range db.chunks[i].ends {
+			if err := binary.Write(metaBuf, binary.LittleEndian, end); err != nil {
+				return err
+			}
+		}
+		if err := writeFile(db.chunks[i].path+"-meta", metaBuf.Bytes()); err != nil {
 			return &SyncError{err}
 		}
 		db.chunks[i].dirty = false

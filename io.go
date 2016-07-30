@@ -7,21 +7,9 @@ import (
 	"syscall"
 )
 
-// Create a new file with 0644 permissions, truncating it if it
-// already exists.
-func createFile(path string) error {
-	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
-	if err != nil {
-		return err
-	}
-
-	_ = file.Close()
-	return nil
-}
-
 // Create a new file with 0644 permissions and the given size,
 // truncating it if it already exists.
-func createFileAtSize(path string, size uint32) error {
+func createFile(path string, size uint32) error {
 	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return err
