@@ -69,7 +69,71 @@ func (c *chunk) closeAndRemove() error {
 	if err := closeAndRemove(c.mmapf); err != nil {
 		return err
 	}
-	return os.Remove(c.path + "-meta")
+	return os.Remove(metaFilePath(c))
+}
+
+const (
+	chunkPrefix      = "chunk_"
+	metaSuffix       = "_meta"
+	initialChunkFile = chunkPrefix + "0"
+)
+
+// Get the meta file path associated with a chunk file path.
+func metaFilePath(chunkFilePath interface{}) string {
+	switch cfg := chunkFilePath.(type) {
+	case chunk:
+		return cfg.path + metaSuffix
+	case *chunk:
+		return cfg.path + metaSuffix
+	case string:
+		return cfg + metaSuffix
+	default:
+		panic("internal error: bad type in metaFilePath")
+	}
+}
+
+// Check if a file is a chunk data file.
+//
+// A valid chunk filename consists of the chunkPrefix followed by one
+// or more digits, with no leading zeroes.
+func isChunkDataFile(fi os.FileInfo) bool {
+	bits := strings.Split(fi.Name(), chunkPrefix)
+	// In the form chunkPrefix[.+]
+	if len(bits) != 2 || len(bits[0]) != 0 || len(bits[1]) == 0 {
+		return false
+	}
+	var nozero bool
+	for _, r := range []rune(bits[1]) {
+		// Must be a digit
+		if !(r >= '0' && r <= '9') {
+			return false
+		}
+		// No leading zeroes
+		if r != '0' {
+			nozero = true
+		} else if nozero {
+			return false
+		}
+	}
+	return true
+}
+
+// Given a chunk, get the filename of the next chunk.
+//
+// This function panics if the chunk path is invalid. This should
+// never happen unless openChunkSliceDB or isChunkDataFile is broken.
+func (c *chunk) nextDataFileName() string {
+	bits := strings.Split(c.path, "/"+chunkPrefix)
+	if len(bits) < 2 {
+		panic("malformed chunk file name: " + c.path)
+	}
+
+	num, err := strconv.Atoi(bits[len(bits)-1])
+	if err != nil {
+		panic("malformed chunk file name: " + c.path)
+	}
+
+	return chunkPrefix + strconv.Itoa(num+1)
 }
 
 // fileInfoSlice implements nice sorting for 'os.FileInfo': first
@@ -113,7 +177,7 @@ func openChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
 		return nil, &ReadError{err}
 	}
 	for _, fi := range fis {
-		if !fi.IsDir() && strings.HasPrefix(fi.Name(), "chunk-") && !strings.HasSuffix(fi.Name(), "-meta") {
+		if !fi.IsDir() && isChunkDataFile(fi) {
 			chunkFiles = append(chunkFiles, fi)
 		}
 	}
@@ -172,7 +236,7 @@ func openChunkFile(basedir string, fi os.FileInfo) (chunk, bool, error) {
 	chunk.mmapf = mmapf
 
 	// read the ending address metadata
-	mfile, err := os.Open(basedir + "/" + fi.Name() + "-meta")
+	mfile, err := os.Open(metaFilePath(chunk))
 	if err != nil {
 		return chunk, done, &ReadError{err}
 	}
@@ -296,32 +360,27 @@ func (db *chunkSliceDB) append(entry []byte) error {
 // A chunk cannot be empty, so it is only valid to call this if an
 // entry is going to be inserted into the chunk immediately.
 func (db *chunkSliceDB) newChunk() error {
-	chunkFile := "chunk-0"
+	chunkFile := db.path + "/" + initialChunkFile
 
 	// Filename is "chunk-<1 + last chunk file name>"
 	if len(db.chunks) > 0 {
-		strnum := strings.TrimPrefix(db.chunks[len(db.chunks)-1].path, db.path+"/"+"chunk-")
-		num, err := strconv.Atoi(strnum)
-		if err != nil {
-			return err
-		}
-		chunkFile = "chunk-" + strconv.Itoa(num+1)
+		chunkFile = db.path + "/" + db.chunks[len(db.chunks)-1].nextDataFileName()
 	}
 
 	// Create the chunk files.
-	if err := createFile(db.path+"/"+chunkFile, db.chunkSize); err != nil {
+	if err := createFile(chunkFile, db.chunkSize); err != nil {
 		return err
 	}
 	metaBuf := new(bytes.Buffer)
 	if err := binary.Write(metaBuf, binary.LittleEndian, db.next); err != nil {
 		return err
 	}
-	if err := writeFile(db.path+"/"+chunkFile+"-meta", metaBuf.Bytes()); err != nil {
+	if err := writeFile(metaFilePath(chunkFile), metaBuf.Bytes()); err != nil {
 		return err
 	}
 
 	// Open the newly-created chunk file.
-	fi, err := os.Stat(db.path + "/" + chunkFile)
+	fi, err := os.Stat(chunkFile)
 	if err != nil {
 		return err
 	}
@@ -491,7 +550,7 @@ func (db *chunkSliceDB) sync(acquireLock bool) error {
 				return err
 			}
 		}
-		if err := writeFile(db.chunks[i].path+"-meta", metaBuf.Bytes()); err != nil {
+		if err := writeFile(metaFilePath(db.chunks[i]), metaBuf.Bytes()); err != nil {
 			return &SyncError{err}
 		}
 		db.chunks[i].dirty = false
