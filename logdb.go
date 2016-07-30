@@ -92,11 +92,11 @@ type LogDB interface {
 
 	// Rollback removes entries from the head of the log.
 	//
-	// Returns 'ErrIDOutOfRange' if the new newest ID is greater
-	// than the current newest, a 'DeleteError' if a chunk file
+	// Returns 'ErrIDOutOfRange' if the new next ID is greater
+	// than the current next, a 'DeleteError' if a chunk file
 	// could not be deleted, and a 'SyncError' value if a periodic
 	// synchronisation failed.
-	Rollback(newNewestID uint64) error
+	Rollback(newNextID uint64) error
 
 	// Clone copies a database to a new path, using the given
 	// format version and chunk size. This may be more efficient
@@ -123,10 +123,15 @@ type LogDB interface {
 	Sync() error
 
 	// OldestID gets the ID of the oldest log entry.
+	//
+	// For an empty database, this will return 0.
 	OldestID() uint64
 
-	// NewestID gets the ID of the newest log entry.
-	NewestID() uint64
+	// NextID gets the ID that will be used for the next log entry.
+	//
+	// As IDs are strictly increasing, if this is nonzero, the ID
+	// of the newest entry is NextID()-1.
+	NextID() uint64
 }
 
 // Create makes a new database with the given format version.

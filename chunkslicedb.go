@@ -32,7 +32,7 @@ type chunkSliceDB struct {
 
 	oldest uint64
 
-	newest uint64
+	next uint64
 
 	syncEvery     int
 	sinceLastSync uint64
@@ -58,7 +58,7 @@ type chunk struct {
 
 	oldest uint64
 
-	newest uint64
+	next uint64
 
 	dirty bool
 }
@@ -121,7 +121,7 @@ func openChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
 	// Populate the chunk slice.
 	chunks := make([]*chunk, len(chunkFiles))
 	chunkOldest := oldest
-	chunkNewest := oldest
+	chunkNext := oldest
 	done := false
 	for i, fi := range chunkFiles {
 		if done {
@@ -130,7 +130,7 @@ func openChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
 			// last chunk file.
 			return nil, ErrCorrupt
 		} else if i > 0 {
-			chunkOldest = 1 + chunks[i-1].newest
+			chunkOldest = chunks[i-1].next
 		}
 
 		var c chunk
@@ -139,7 +139,7 @@ func openChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
 			return nil, err
 		}
 		chunks[i] = &c
-		chunkNewest = chunkOldest + uint64(len(chunks[i].ends))
+		chunkNext = chunkOldest + uint64(len(chunks[i].ends))
 	}
 
 	return &chunkSliceDB{
@@ -147,7 +147,7 @@ func openChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
 		chunkSize: chunkSize,
 		chunks:    chunks,
 		oldest:    oldest,
-		newest:    chunkNewest,
+		next:      chunkNext,
 		syncEvery: 100,
 	}, nil
 }
@@ -198,7 +198,7 @@ func openChunkFile(basedir string, fi os.FileInfo, chunkOldest uint64) (chunk, b
 		prior = this
 	}
 
-	chunk.newest = chunkOldest + uint64(len(chunk.ends))
+	chunk.next = chunkOldest + uint64(len(chunk.ends))
 	return chunk, done, nil
 }
 
@@ -237,7 +237,8 @@ func (db *chunkSliceDB) Append(entry []byte) error {
 		lastChunk.bytes[start+int32(i)] = b
 	}
 	lastChunk.ends = append(lastChunk.ends, end)
-	db.newest++
+	lastChunk.next++
+	db.next++
 
 	// Mark the current chunk as dirty and perform a periodic sync.
 	db.sinceLastSync++
@@ -249,6 +250,9 @@ func (db *chunkSliceDB) Append(entry []byte) error {
 }
 
 // Add a new chunk to the database.
+//
+// A chunk cannot be empty, so it is only valid to call this if an
+// entry is going to be inserted into the chunk immediately.
 func (db *chunkSliceDB) newChunk() error {
 	chunkFile := "chunk-0"
 
@@ -275,7 +279,8 @@ func (db *chunkSliceDB) newChunk() error {
 	if err != nil {
 		return err
 	}
-	c, _, err := openChunkFile(db.path, fi, db.newest+1)
+	chunkOldest := db.next
+	c, _, err := openChunkFile(db.path, fi, chunkOldest)
 	if err != nil {
 		return err
 	}
@@ -289,7 +294,7 @@ func (db *chunkSliceDB) Get(id uint64) ([]byte, error) {
 	defer db.rwlock.RUnlock()
 
 	// Check ID is in range.
-	if id < db.oldest || id > db.newest || len(db.chunks) == 0 {
+	if id < db.oldest || id >= db.next || len(db.chunks) == 0 {
 		return nil, ErrIDOutOfRange
 	}
 
@@ -297,8 +302,8 @@ func (db *chunkSliceDB) Get(id uint64) ([]byte, error) {
 	lo := 0
 	hi := len(db.chunks)
 	mid := (hi - lo) / 2
-	for ; !(db.chunks[mid].oldest <= id && id <= db.chunks[mid].newest); mid = (hi - lo) / 2 {
-		if db.chunks[mid].newest < id {
+	for ; !(db.chunks[mid].oldest <= id && id < db.chunks[mid].next); mid = (hi - lo) / 2 {
+		if db.chunks[mid].next <= id {
 			lo = mid
 		} else if db.chunks[mid].oldest > id {
 			hi = mid
@@ -316,32 +321,32 @@ func (db *chunkSliceDB) Get(id uint64) ([]byte, error) {
 	end := chunk.ends[off]
 	out := make([]byte, end-start)
 	for i := start; i < end; i++ {
-		out[i] = chunk.bytes[start+i]
+		out[i-start] = chunk.bytes[i]
 	}
 	return out, nil
 }
 
 func (db *chunkSliceDB) Forget(newOldestID uint64) error {
-	return db.truncate(newOldestID, db.newest)
+	return db.truncate(newOldestID, db.next)
 }
 
-func (db *chunkSliceDB) Rollback(newNewestID uint64) error {
-	return db.truncate(db.oldest, newNewestID)
+func (db *chunkSliceDB) Rollback(newNextID uint64) error {
+	return db.truncate(db.oldest, newNextID)
 }
 
 // Truncate the database at both ends.
-func (db *chunkSliceDB) truncate(newOldestID uint64, newNewestID uint64) error {
+func (db *chunkSliceDB) truncate(newOldestID uint64, newNextID uint64) error {
 	db.rwlock.Lock()
 	defer db.rwlock.Unlock()
 
-	if newOldestID < db.oldest || newNewestID > db.newest {
+	if newOldestID < db.oldest || newNextID > db.next {
 		return ErrIDOutOfRange
 	}
 
 	// Remove the metadata for any entries being rolled back.
-	for i := len(db.chunks) - 1; i > 0 && db.chunks[i].newest > newNewestID; i-- {
+	for i := len(db.chunks) - 1; i > 0 && db.chunks[i].next >= newNextID; i-- {
 		c := db.chunks[i]
-		c.ends = c.ends[0 : c.newest-newNewestID]
+		c.ends = c.ends[0 : c.next-newNextID]
 		if !c.dirty {
 			c.dirty = true
 			db.syncDirty = append(db.syncDirty, i)
@@ -349,16 +354,16 @@ func (db *chunkSliceDB) truncate(newOldestID uint64, newNewestID uint64) error {
 	}
 
 	db.sinceLastSync += newOldestID - db.oldest
-	db.sinceLastSync += db.newest - newNewestID
+	db.sinceLastSync += db.next - newNextID
 	db.oldest = newOldestID
-	db.newest = newNewestID
+	db.next = newNextID
 
 	// Check if this deleted any chunks
 	first := 0
 	last := len(db.chunks)
-	for ; first < len(db.chunks) && db.chunks[first].newest < newOldestID; first++ {
+	for ; first < len(db.chunks) && db.chunks[first].next < newOldestID; first++ {
 	}
-	for ; last > 0 && db.chunks[last].oldest > newNewestID; last-- {
+	for ; last > 0 && db.chunks[last].oldest > newNextID; last-- {
 	}
 
 	if first > 0 || last < len(db.chunks) {
@@ -449,6 +454,6 @@ func (db *chunkSliceDB) OldestID() uint64 {
 	return db.oldest
 }
 
-func (db *chunkSliceDB) NewestID() uint64 {
-	return db.newest
+func (db *chunkSliceDB) NextID() uint64 {
+	return db.next
 }
