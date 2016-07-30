@@ -18,12 +18,13 @@ func writeFile(path string, data interface{}) error {
 	}
 
 	if err := binary.Write(file, binary.LittleEndian, data); err != nil {
+		_ = file.Close()
 		return err
 	}
 
-	fsync(file)
-
-	return nil
+	err = fsync(file)
+	_ = file.Close()
+	return err
 }
 
 // Read data into the given pointer from the file using little-endian
@@ -34,11 +35,9 @@ func readFile(path string, data interface{}) error {
 		return err
 	}
 
-	if err := binary.Read(file, binary.LittleEndian, data); err != nil {
-		return err
-	}
-
-	return nil
+	err = binary.Read(file, binary.LittleEndian, data)
+	_ = file.Close()
+	return err
 }
 
 // Memory-map the given file.
