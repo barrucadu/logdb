@@ -59,6 +59,13 @@ type SyncError struct{ Err error }
 func (e *SyncError) Error() string          { return e.Err.Error() }
 func (e *SyncError) WrappedErrors() []error { return []error{e.Err} }
 
+// DeleteError means that a a file could not be deleted from disk. It
+// wraps the actual error.
+type DeleteError struct{ Err error }
+
+func (e *DeleteError) Error() string          { return e.Err.Error() }
+func (e *DeleteError) WrappedErrors() []error { return []error{e.Err} }
+
 // A LogDB is a reference to an efficient log-structured database
 // providing ACID consistency guarantees.
 type LogDB interface {
@@ -78,15 +85,17 @@ type LogDB interface {
 	// Forget removes entries from the end of the log.
 	//
 	// Returns 'ErrIDOutOfRange' if the new oldest ID is lesser
-	// than the current oldest, and a 'SyncError' value if a
-	// periodic synchronisation failed.
+	// than the current oldest, a 'DeleteError' if a chunk file
+	// could not be deleted, and a 'SyncError' value if a periodic
+	// synchronisation failed.
 	Forget(newOldestID uint64) error
 
 	// Rollback removes entries from the head of the log.
 	//
 	// Returns 'ErrIDOutOfRange' if the new newest ID is greater
-	// than the current newest, and a 'SyncError' value if a
-	// periodic synchronisation failed.
+	// than the current newest, a 'DeleteError' if a chunk file
+	// could not be deleted, and a 'SyncError' value if a periodic
+	// synchronisation failed.
 	Rollback(newNewestID uint64) error
 
 	// Clone copies a database to a new path, using the given
@@ -164,12 +173,12 @@ func Create(path string, version uint16, chunkSize uint32) (LogDB, error) {
 	}
 
 	// Write the version file
-	if err := writeFile(path+"/version", version, true); err != nil {
+	if err := writeFile(path+"/version", version); err != nil {
 		return nil, &WriteError{err}
 	}
 
 	// Write the chunk size file
-	if err := writeFile(path+"/chunk_size", chunkSize, true); err != nil {
+	if err := writeFile(path+"/chunk_size", chunkSize); err != nil {
 		return nil, &WriteError{err}
 	}
 

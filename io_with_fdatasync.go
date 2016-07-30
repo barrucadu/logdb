@@ -8,7 +8,7 @@ import (
 )
 
 // Synchronise writes to a file descriptor.
-func fsync(file os.File) error {
+func fsync(file *os.File) error {
 	fd := int(file.Fd())
 	return syscall.Fdatasync(fd)
 }

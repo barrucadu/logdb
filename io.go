@@ -8,14 +8,11 @@ import (
 )
 
 // Write the given value to the file using little-endian byte order.
-// If 'create' is true, the file is created/truncated.
-func writeFile(path string, data interface{}, create bool) error {
-	flags := os.O_RDWR
-	if create {
-		flags = flags | os.O_CREATE | os.O_TRUNC
-	}
-
-	file, err := os.OpenFile(path, flags, 0644)
+// If the file doesn't exist, it is created. If the file does exist,
+// it is truncated. The contents of the file are synced to disk after
+// the write.
+func writeFile(path string, data interface{}) error {
+	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return err
 	}
@@ -23,6 +20,8 @@ func writeFile(path string, data interface{}, create bool) error {
 	if err := binary.Write(file, binary.LittleEndian, data); err != nil {
 		return err
 	}
+
+	fsync(file)
 
 	return nil
 }
@@ -60,4 +59,12 @@ func mmap(path string) (*os.File, []byte, error) {
 
 	bytes, err := syscall.Mmap(int(f.Fd()), 0, int(fi.Size()), syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
 	return f, bytes, err
+}
+
+// Close and delete a file.
+func closeAndRemove(file *os.File) error {
+	if err := file.Close(); err != nil {
+		return err
+	}
+	return os.Remove(file.Name())
 }

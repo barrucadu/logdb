@@ -34,7 +34,7 @@ type chunkSliceDB struct {
 	newest uint64
 
 	syncEvery     int
-	sinceLastSync uint
+	sinceLastSync uint64
 	syncDirty     []int
 }
 
@@ -43,7 +43,7 @@ type chunk struct {
 	path string
 
 	bytes []byte
-	mmapf os.File
+	mmapf *os.File
 
 	// One past the ending addresses of entries in the 'bytes'
 	// slice.
@@ -54,11 +54,19 @@ type chunk struct {
 	// cannot be calculated from starting addresses, unless the
 	// ending address of the final entry is stored as well.
 	ends  []int32
-	endsf os.File
+	endsf *os.File
 
 	oldest uint64
 
 	newest uint64
+}
+
+// Delete the files associated with a chunk.
+func (c *chunk) closeAndRemove() error {
+	if err := closeAndRemove(c.mmapf); err != nil {
+		return err
+	}
+	return closeAndRemove(c.endsf)
 }
 
 // fileInfoSlice implements nice sorting for 'os.FileInfo': first
@@ -81,7 +89,7 @@ func (fis fileInfoSlice) Less(i, j int) bool {
 
 func createChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
 	// Write the "oldest" file.
-	if err := writeFile(path+"/oldest", uint64(0), true); err != nil {
+	if err := writeFile(path+"/oldest", uint64(0)); err != nil {
 		return nil, &WriteError{err}
 	}
 
@@ -162,14 +170,14 @@ func openChunkFile(fi os.FileInfo, chunkOldest uint64) (chunk, bool, error) {
 		return chunk, done, &ReadError{err}
 	}
 	chunk.bytes = bytes
-	chunk.mmapf = *mmapf
+	chunk.mmapf = mmapf
 
 	// read the ending address metadata
 	mfile, err := os.Open(fi.Name() + "-meta")
 	if err != nil {
 		return chunk, done, &ReadError{err}
 	}
-	chunk.endsf = *mfile
+	chunk.endsf = mfile
 	prior := int32(-1)
 	for {
 		var this int32
@@ -239,7 +247,37 @@ func (db *chunkSliceDB) Forget(newOldestID uint64) error {
 	db.rwlock.Lock()
 	defer db.rwlock.Unlock()
 
-	panic("unimplemented")
+	if newOldestID < db.oldest {
+		return ErrIDOutOfRange
+	}
+
+	db.sinceLastSync += newOldestID - db.oldest
+
+	db.oldest = newOldestID
+
+	// Check if this deleted any chunks
+	first := 0
+	for _, c := range db.chunks {
+		if c.newest < newOldestID {
+			first++
+		}
+	}
+	if first > 0 {
+		// It did! Sync everything and then delete the files.
+		if err := db.sync(false); err != nil {
+			return err
+		}
+		for i, c := range db.chunks {
+			if i == first {
+				break
+			}
+			if err := c.closeAndRemove(); err != nil {
+				return &DeleteError{err}
+			}
+		}
+		db.chunks = db.chunks[first:]
+	}
+	return db.periodicSync(false)
 }
 
 func (db *chunkSliceDB) Rollback(newNewestID uint64) error {
@@ -259,17 +297,34 @@ func (db *chunkSliceDB) Clone(path string, version uint16, chunkSize uint32) (Lo
 func (db *chunkSliceDB) SetSync(every int) error {
 	db.syncEvery = every
 
-	// Sync immediately if the number of unsynced entries is now
-	// above the threshold
-	if every >= 0 && db.sinceLastSync > uint(every) {
-		return db.Sync()
+	// Immediately perform a periodic sync.
+	return db.periodicSync(true)
+}
+
+func (db *chunkSliceDB) Sync() error {
+	return db.sync(true)
+}
+
+// Perform a sync only if needed. This function is not safe to execute
+// concurrently with a write, so the 'acquireLock' parameter MUST be
+// true UNLESS the write lock is already held by this thread.
+func (db *chunkSliceDB) periodicSync(acquireLock bool) error {
+	// Sync if the number of unsynced entries is above the
+	// threshold
+	if db.syncEvery >= 0 && db.sinceLastSync > uint64(db.syncEvery) {
+		return db.sync(acquireLock)
 	}
 	return nil
 }
 
-func (db *chunkSliceDB) Sync() error {
-	db.rwlock.RLock()
-	defer db.rwlock.RUnlock()
+// This function is not safe to execute concurrently with a write, so
+// the 'acquireLock' parameter MUST be true UNLESS the write lock is
+// already held by this thread.
+func (db *chunkSliceDB) sync(acquireLock bool) error {
+	if acquireLock {
+		db.rwlock.RLock()
+		defer db.rwlock.RUnlock()
+	}
 
 	for _, i := range db.syncDirty {
 		// To ensure ACID, sync the data first and only then
@@ -284,6 +339,11 @@ func (db *chunkSliceDB) Sync() error {
 		if err := fsync(db.chunks[i].endsf); err != nil {
 			return &SyncError{err}
 		}
+	}
+
+	// Write the oldest entry ID.
+	if err := writeFile(db.path+"/oldest", db.oldest); err != nil {
+		return &SyncError{err}
 	}
 
 	db.syncDirty = nil
