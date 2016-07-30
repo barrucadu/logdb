@@ -5,6 +5,7 @@ package logdb
 
 import (
 	"errors"
+	"fmt"
 	"os"
 )
 
@@ -66,6 +67,22 @@ type DeleteError struct{ Err error }
 func (e *DeleteError) Error() string          { return e.Err.Error() }
 func (e *DeleteError) WrappedErrors() []error { return []error{e.Err} }
 
+// AtomicityError means that an error occurred while appending an
+// entry in an 'AppendEntries' call, and attempting to rollback also
+// gave an error. It wraps the actual errors.
+type AtomicityError struct {
+	AppendErr   error
+	RollbackErr error
+}
+
+func (e *AtomicityError) Error() string {
+	return fmt.Sprintf("error rolling back after append error: %s (%s)", e.RollbackErr.Error(), e.AppendErr.Error())
+}
+
+func (e *AtomicityError) WrappedErrors() []error {
+	return []error{e.AppendErr, e.RollbackErr}
+}
+
 // A LogDB is a reference to an efficient log-structured database
 // providing ACID consistency guarantees.
 type LogDB interface {
@@ -78,8 +95,9 @@ type LogDB interface {
 
 	// Atomically write a collection of new entries to the log.
 	//
-	// Returns the same errors as 'Append'. If any entry fails to
-	// append, the log is rolled back to the original state.
+	// Returns the same errors as 'Append', and an
+	// 'AtomicityError' value if any entry fails to append and
+	// rolling back the log failed.
 	AppendEntries(entries [][]byte) error
 
 	// Get looks up an entry by ID.

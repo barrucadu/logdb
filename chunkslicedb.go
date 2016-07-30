@@ -222,8 +222,8 @@ func (db *chunkSliceDB) AppendEntries(entries [][]byte) error {
 	for _, entry := range entries {
 		if err := db.append(entry); err != nil {
 			// Rollback on error.
-			if err := db.Rollback(originalNext); err != nil {
-				return err
+			if rerr := db.Rollback(originalNext); rerr != nil {
+				return &AtomicityError{AppendErr: err, RollbackErr: rerr}
 			}
 			return err
 		}
