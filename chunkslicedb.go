@@ -246,7 +246,7 @@ func (db *chunkSliceDB) Append(entry []byte) error {
 		lastChunk.dirty = true
 		db.syncDirty = append(db.syncDirty, len(db.chunks)-1)
 	}
-	return db.periodicSync(true)
+	return db.periodicSync(false)
 }
 
 // Add a new chunk to the database.
