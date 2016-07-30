@@ -86,6 +86,18 @@ type LogDB interface {
 	// Returns the same errors as 'Create'.
 	Clone(path string, version uint16, chunkSize uint32) (LogDB, error)
 
+	// Synchronise the data to disk after touching (appending,
+	// forgetting, or rolling back) at most this many entries.
+	// Data is always synced if an entire chunk is forgotten or
+	// rolled back.
+	//
+	// <0 disables periodic syncing, and 'Sync' must be called
+	// instead. The default value is 100.
+	SetSync(every int)
+
+	// Synchronise the data to disk now.
+	Sync()
+
 	// OldestID gets the ID of the oldest log entry.
 	OldestID() uint64
 

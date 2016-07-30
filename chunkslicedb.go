@@ -32,6 +32,9 @@ type chunkSliceDB struct {
 	oldest uint64
 
 	newest uint64
+
+	syncEvery     int
+	sinceLastSync uint
 }
 
 // A chunk is one memory-mapped file.
@@ -79,7 +82,7 @@ func createChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
 		return nil, &WriteError{err}
 	}
 
-	return &chunkSliceDB{path: path, chunkSize: chunkSize}, nil
+	return &chunkSliceDB{path: path, chunkSize: chunkSize, syncEvery: 100}, nil
 }
 
 func openChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
@@ -130,6 +133,7 @@ func openChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
 		chunks:    chunks,
 		oldest:    oldest,
 		newest:    chunkNewest,
+		syncEvery: 100,
 	}, nil
 }
 
@@ -241,6 +245,22 @@ func (db *chunkSliceDB) Rollback(newNewestID uint64) error {
 }
 
 func (db *chunkSliceDB) Clone(path string, version uint16, chunkSize uint32) (LogDB, error) {
+	db.rwlock.RLock()
+	defer db.rwlock.RUnlock()
+
+	panic("unimplemented")
+}
+
+func (db *chunkSliceDB) SetSync(every int) {
+	// Sync immediately if the number of unsynced entries is now
+	// above the threshold
+	if every >= 0 && db.sinceLastSync > uint(every) {
+		db.Sync()
+	}
+	db.syncEvery = every
+}
+
+func (db *chunkSliceDB) Sync() {
 	db.rwlock.RLock()
 	defer db.rwlock.RUnlock()
 
