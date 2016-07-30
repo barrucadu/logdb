@@ -302,12 +302,12 @@ func (db *chunkSliceDB) Get(id uint64) ([]byte, error) {
 	// Binary search through chunks for the one containing the ID.
 	lo := 0
 	hi := len(db.chunks)
-	mid := (hi - lo) / 2
-	for ; !(db.chunks[mid].oldest <= id && id < db.chunks[mid].next); mid = (hi - lo) / 2 {
+	mid := hi / 2
+	for ; !(db.chunks[mid].oldest <= id && id < db.chunks[mid].next); mid = (hi + lo) / 2 {
 		if db.chunks[mid].next <= id {
-			lo = mid
+			lo = mid + 1
 		} else if db.chunks[mid].oldest > id {
-			hi = mid
+			hi = mid - 1
 		}
 	}
 
