@@ -277,12 +277,6 @@ func (db *chunkSliceDB) AppendEntries(entries [][]byte) error {
 	defer db.rwlock.Unlock()
 
 	originalNext := db.NextID()
-	originalSyncAfter := db.syncEvery
-
-	// Disable periodic syncing while appending.
-	if err := db.SetSync(-1); err != nil {
-		return err
-	}
 
 	for _, entry := range entries {
 		if err := db.append(entry); err != nil {
@@ -294,7 +288,7 @@ func (db *chunkSliceDB) AppendEntries(entries [][]byte) error {
 		}
 	}
 
-	return db.SetSync(originalSyncAfter)
+	return db.periodicSync(false)
 }
 
 func (db *chunkSliceDB) AppendValues(values []interface{}) error {
@@ -356,7 +350,7 @@ func (db *chunkSliceDB) append(entry []byte) error {
 		lastChunk.dirty = true
 		db.syncDirty = append(db.syncDirty, len(db.chunks)-1)
 	}
-	return db.periodicSync(false)
+	return nil
 }
 
 // Add a new chunk to the database.
