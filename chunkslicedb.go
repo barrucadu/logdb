@@ -102,6 +102,12 @@ func isChunkDataFile(fi os.FileInfo) bool {
 	if len(bits) != 2 || len(bits[0]) != 0 || len(bits[1]) == 0 {
 		return false
 	}
+
+	// Special case: '0' is allowed, even though that has a leading zero.
+	if bits[1] == "0" {
+		return true
+	}
+
 	var nozero bool
 	for _, r := range []rune(bits[1]) {
 		// Must be a digit
@@ -111,10 +117,11 @@ func isChunkDataFile(fi os.FileInfo) bool {
 		// No leading zeroes
 		if r != '0' {
 			nozero = true
-		} else if nozero {
+		} else if !nozero {
 			return false
 		}
 	}
+
 	return true
 }
 
