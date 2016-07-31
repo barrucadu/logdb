@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	chunkSize  = 256
+	chunkSize  = 113
 	firstID    = uint64(1)
 	numEntries = 255
 )
