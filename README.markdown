@@ -1,4 +1,4 @@
-logdb [![GoDoc](https://godoc.org/github.com/barrucadu/logdb?status.svg)][godoc]
+logdb [![Build Status](https://travis-ci.org/barrucadu/logdb.svg?branch=master)][travis] [![Coverage Status](https://coveralls.io/repos/barrucadu/logdb/badge.svg?branch=master)][coveralls] [![GoDoc](https://godoc.org/github.com/barrucadu/logdb?status.svg)][godoc]
 =====
 
 LogDB is a Go library for efficient log-structured databases.  A log-structured
@@ -13,7 +13,9 @@ the database cannot be left in an inconsistent state.
 
 The godoc is [available online][godoc].
 
-[godoc]: https://godoc.org/github.com/barrucadu/logdb
+[travis]:    https://travis-ci.org/barrucadu/logdb
+[coveralls]: https://coveralls.io/r/barrucadu/logdb?branch=master
+[godoc]:     https://godoc.org/github.com/barrucadu/logdb
 
 
 Project Status
