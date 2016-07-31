@@ -1,4 +1,4 @@
-logdb [![Build Status](https://travis-ci.org/barrucadu/logdb.svg?branch=master)][travis] [![Coverage Status](https://coveralls.io/repos/barrucadu/logdb/badge.svg?branch=master)][coveralls] [![GoDoc](https://godoc.org/github.com/barrucadu/logdb?status.svg)][godoc]
+logdb [![Build Status][travis-badge]][travis] [![Report Card][goreport-badge]][goreport] [![Coverage Status][coveralls-badge]][coveralls] [![GoDoc][godoc-badge]][godoc]
 =====
 
 LogDB is a Go library for efficient log-structured databases.  A log-structured
@@ -13,9 +13,14 @@ the database cannot be left in an inconsistent state.
 
 The godoc is [available online][godoc].
 
-[travis]:    https://travis-ci.org/barrucadu/logdb
-[coveralls]: https://coveralls.io/r/barrucadu/logdb?branch=master
-[godoc]:     https://godoc.org/github.com/barrucadu/logdb
+[travis]: <https://travis-ci.org/barrucadu/logdb>
+[travis-badge]: <https://travis-ci.org/barrucadu/logdb.svg?branch=master>
+[goreport]: <https://goreportcard.com/report/github.com/barrucadu/logdb>
+[goreport-badge]: <https://img.shields.io/badge/go_report-A-brightgreen.svg?style=flat>
+[coveralls]: <https://coveralls.io/r/barrucadu/logdb?branch=master>
+[coveralls-badge]: <https://coveralls.io/repos/barrucadu/logdb/badge.svg?branch=master>
+[godoc]: <https://godoc.org/github.com/barrucadu/logdb>
+[godoc-badge]: <https://godoc.org/github.com/barrucadu/logdb?status.svg>
 
 
 Project Status
