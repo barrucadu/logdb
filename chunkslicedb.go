@@ -151,7 +151,11 @@ func (fis fileInfoSlice) Swap(i, j int) {
 func (fis fileInfoSlice) Less(i, j int) bool {
 	ni := fis[i].Name()
 	nj := fis[j].Name()
-	return len(ni) < len(nj) || ni < nj
+
+	if len(ni) == len(nj) {
+		return ni < nj
+	}
+	return len(ni) < len(nj)
 }
 
 func createChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
