@@ -91,11 +91,7 @@ func (l *LogStore) FirstIndex() (uint64, error) {
 
 // LastIndex returns the last index written. 0 for no entries.
 func (l *LogStore) LastIndex() (uint64, error) {
-	next := l.Store.NextID()
-	if next == 0 {
-		return 0, nil
-	}
-	return next - 1, nil
+	return l.Store.NewestID(), nil
 }
 
 // GetLog gets a log entry at a given index.
@@ -137,7 +133,7 @@ func (l *LogStore) DeleteRange(min, max uint64) error {
 	if min <= l.Store.OldestID() {
 		return l.Store.Forget(max)
 	}
-	return l.Store.Rollback(min)
+	return l.Store.Rollback(min - 1)
 }
 
 // Close the underlying database. It is not safe to use the 'LogStore'

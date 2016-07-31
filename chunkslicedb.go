@@ -171,7 +171,12 @@ func createChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
 		return nil, &WriteError{err}
 	}
 
-	return &chunkSliceDB{path: path, chunkSize: chunkSize, syncEvery: 100}, nil
+	return &chunkSliceDB{
+		path:      path,
+		chunkSize: chunkSize,
+		syncEvery: 100,
+		next:      1,
+	}, nil
 }
 
 func openChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
@@ -196,14 +201,14 @@ func openChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
 
 	// Populate the chunk slice.
 	chunks := make([]*chunk, len(chunkFiles))
-	chunkNext := oldest
+	next := uint64(1)
 	for i, fi := range chunkFiles {
 		c, err := openChunkFile(path, fi)
 		if err != nil {
 			return nil, err
 		}
 		chunks[i] = &c
-		chunkNext = c.oldest + uint64(len(chunks[i].ends))
+		next = c.next
 	}
 
 	return &chunkSliceDB{
@@ -211,7 +216,7 @@ func openChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
 		chunkSize: chunkSize,
 		chunks:    chunks,
 		oldest:    oldest,
-		next:      chunkNext,
+		next:      next,
 		syncEvery: 100,
 	}, nil
 }
@@ -265,12 +270,12 @@ func (db *chunkSliceDB) AppendEntries(entries [][]byte) error {
 	db.rwlock.Lock()
 	defer db.rwlock.Unlock()
 
-	originalNext := db.NextID()
+	originalNewest := db.NewestID()
 
 	for _, entry := range entries {
 		if err := db.append(entry); err != nil {
 			// Rollback on error.
-			if rerr := db.truncate(db.oldest, originalNext); rerr != nil {
+			if rerr := db.truncate(db.oldest, originalNewest); rerr != nil {
 				return &AtomicityError{AppendErr: err, RollbackErr: rerr}
 			}
 			return err
@@ -313,12 +318,6 @@ func (db *chunkSliceDB) append(entry []byte) error {
 	}
 	lastChunk.ends = append(lastChunk.ends, end)
 
-	// Increment twice at the first entry, to go from 0 (nothing
-	// in database) to 2 (ID after entry 1)
-	if db.next == 0 {
-		lastChunk.next++
-		db.next++
-	}
 	lastChunk.next++
 	db.next++
 
@@ -417,17 +416,19 @@ func (db *chunkSliceDB) Forget(newOldestID uint64) error {
 	return defaultForget(db, newOldestID)
 }
 
-func (db *chunkSliceDB) Rollback(newNextID uint64) error {
-	return defaultRollback(db, newNextID)
+func (db *chunkSliceDB) Rollback(newNewestID uint64) error {
+	return defaultRollback(db, newNewestID)
 }
 
-func (db *chunkSliceDB) Truncate(newOldestID, newNextID uint64) error {
+func (db *chunkSliceDB) Truncate(newOldestID, newNewestID uint64) error {
 	db.rwlock.Lock()
 	defer db.rwlock.Unlock()
-	return db.truncate(newOldestID, newNextID)
+	return db.truncate(newOldestID, newNewestID)
 }
 
-func (db *chunkSliceDB) truncate(newOldestID, newNextID uint64) error {
+func (db *chunkSliceDB) truncate(newOldestID, newNewestID uint64) error {
+	newNextID := newNewestID + 1
+
 	if newOldestID < db.oldest || newNextID > db.next {
 		return ErrIDOutOfRange
 	}
@@ -550,8 +551,8 @@ func (db *chunkSliceDB) OldestID() uint64 {
 	return db.oldest
 }
 
-func (db *chunkSliceDB) NextID() uint64 {
-	return db.next
+func (db *chunkSliceDB) NewestID() uint64 {
+	return db.next - 1
 }
 
 func (db *chunkSliceDB) Close() error {

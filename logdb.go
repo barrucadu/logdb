@@ -106,7 +106,7 @@ type LogDB interface {
 
 	// Forget removes entries from the end of the log.
 	//
-	// Returns 'ErrIDOutOfRange' if the new oldest ID is lesser
+	// Returns 'ErrIDOutOfRange' if the new "oldest" ID is lesser
 	// than the current oldest, a 'DeleteError' if a chunk file
 	// could not be deleted, and a 'SyncError' value if a periodic
 	// synchronisation failed.
@@ -114,17 +114,17 @@ type LogDB interface {
 
 	// Rollback removes entries from the head of the log.
 	//
-	// Returns 'ErrIDOutOfRange' if the new next ID is greater
+	// Returns 'ErrIDOutOfRange' if the new "newest" ID is greater
 	// than the current next, a 'DeleteError' if a chunk file
 	// could not be deleted, and a 'SyncError' value if a periodic
 	// synchronisation failed.
-	Rollback(newNextID uint64) error
+	Rollback(newNewestID uint64) error
 
 	// Perform a combination 'Forget'/'Rollback' operation, this
 	// is atomic.
 	//
 	// Returns the same errors as 'Forget' and 'Rollback'.
-	Truncate(newOldestID, newNextID uint64) error
+	Truncate(newOldestID, newNewestID uint64) error
 
 	// Synchronise the data to disk after touching (appending,
 	// forgetting, or rolling back) at most this many entries.
@@ -148,11 +148,10 @@ type LogDB interface {
 	// For an empty database, this will return 0.
 	OldestID() uint64
 
-	// NextID gets the ID that will be used for the next log entry.
+	// NewestID gets the ID of the newest log entry.
 	//
-	// As IDs are strictly increasing, if this is nonzero, the ID
-	// of the newest entry is NextID()-1.
-	NextID() uint64
+	// For an empty database, this will return 0.
+	NewestID() uint64
 
 	// Sync the database and close any open files. It is an error
 	// to try to use a database after closing it.
@@ -242,9 +241,9 @@ func defaultAppend(db LogDB, entry []byte) error {
 }
 
 func defaultForget(db LogDB, newOldestID uint64) error {
-	return db.Truncate(newOldestID, db.NextID())
+	return db.Truncate(newOldestID, db.NewestID())
 }
 
-func defaultRollback(db LogDB, newNextID uint64) error {
-	return db.Truncate(db.OldestID(), newNextID)
+func defaultRollback(db LogDB, newNewestID uint64) error {
+	return db.Truncate(db.OldestID(), newNewestID)
 }

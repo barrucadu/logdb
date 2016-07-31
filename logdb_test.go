@@ -20,7 +20,7 @@ func TestOneIndexed(t *testing.T) {
 
 	assertAppend(t, db, []byte{42})
 	assert.Equal(t, firstID, db.OldestID())
-	assert.Equal(t, uint64(2), db.NextID())
+	assert.Equal(t, firstID, db.NewestID())
 	assertGet(t, db, 1)
 }
 
@@ -38,7 +38,7 @@ func TestAppend(t *testing.T) {
 	}
 
 	assert.Equal(t, firstID, db.OldestID())
-	assert.Equal(t, uint64(len(vs))+1, db.NextID())
+	assert.Equal(t, uint64(len(vs)), db.NewestID())
 
 	for i, v := range vs {
 		bs := assertGet(t, db, uint64(i+1))
@@ -58,7 +58,7 @@ func TestAppendEntries(t *testing.T) {
 	assertAppendEntries(t, db, vs)
 
 	assert.Equal(t, firstID, db.OldestID())
-	assert.Equal(t, uint64(len(vs))+1, db.NextID())
+	assert.Equal(t, uint64(len(vs)), db.NewestID())
 
 	for i, v := range vs {
 		bs := assertGet(t, db, uint64(i+1))
@@ -109,12 +109,12 @@ func TestRollback(t *testing.T) {
 	vs := filldb(t, db, numEntries)
 
 	toRollback := uint64(50)
-	newNextID := db.NextID() - toRollback
-	assertRollback(t, db, newNextID)
-	assert.Equal(t, newNextID, db.NextID())
+	newNewestID := db.NewestID() - toRollback
+	assertRollback(t, db, newNewestID)
+	assert.Equal(t, newNewestID, db.NewestID())
 
 	for i, v := range vs {
-		if uint64(i)+1 == newNextID {
+		if uint64(i)+1 > newNewestID {
 			break
 		}
 		bs := assertGet(t, db, uint64(i+1))
@@ -131,16 +131,16 @@ func TestTruncate(t *testing.T) {
 	toForget := uint64(20)
 	toRollback := uint64(30)
 	newOldestID := db.OldestID() + toForget
-	newNextID := db.NextID() - toRollback
-	assertTruncate(t, db, newOldestID, newNextID)
+	newNewestID := db.NewestID() - toRollback
+	assertTruncate(t, db, newOldestID, newNewestID)
 	assert.Equal(t, newOldestID, db.OldestID())
-	assert.Equal(t, newNextID, db.NextID())
+	assert.Equal(t, newNewestID, db.NewestID())
 
 	for i, v := range vs {
 		if uint64(i)+1 < newOldestID {
 			continue
 		}
-		if uint64(i)+1 == newNextID {
+		if uint64(i)+1 > newNewestID {
 			break
 		}
 		bs := assertGet(t, db, uint64(i+1))
@@ -156,8 +156,8 @@ func TestPersistTruncate(t *testing.T) {
 	toForget := uint64(20)
 	toRollback := uint64(30)
 	newOldestID := db.OldestID() + toForget
-	newNextID := db.NextID() - toRollback
-	assertTruncate(t, db, newOldestID, newNextID)
+	newNewestID := db.NewestID() - toRollback
+	assertTruncate(t, db, newOldestID, newNewestID)
 
 	assertClose(t, db)
 
@@ -165,13 +165,13 @@ func TestPersistTruncate(t *testing.T) {
 	defer assertClose(t, db2)
 
 	assert.Equal(t, newOldestID, db2.OldestID())
-	assert.Equal(t, newNextID, db2.NextID())
+	assert.Equal(t, newNewestID, db2.NewestID())
 
 	for i, v := range vs {
 		if uint64(i)+1 < newOldestID {
 			continue
 		}
-		if uint64(i)+1 == newNextID {
+		if uint64(i)+1 > newNewestID {
 			break
 		}
 		bs := assertGet(t, db2, uint64(i+1))
@@ -230,14 +230,14 @@ func assertForget(t *testing.T, db LogDB, newOldestID uint64) {
 	}
 }
 
-func assertRollback(t *testing.T, db LogDB, newNextID uint64) {
-	if err := db.Rollback(newNextID); err != nil {
+func assertRollback(t *testing.T, db LogDB, newNewestID uint64) {
+	if err := db.Rollback(newNewestID); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func assertTruncate(t *testing.T, db LogDB, newOldestID, newNextID uint64) {
-	if err := db.Truncate(newOldestID, newNextID); err != nil {
+func assertTruncate(t *testing.T, db LogDB, newOldestID, newNewestID uint64) {
+	if err := db.Truncate(newOldestID, newNewestID); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -253,7 +253,7 @@ func filldb(t *testing.T, db LogDB, num int) [][]byte {
 	assertAppendEntries(t, db, vs)
 
 	assert.Equal(t, firstID, db.OldestID())
-	assert.Equal(t, uint64(len(vs))+1, db.NextID())
+	assert.Equal(t, uint64(len(vs)), db.NewestID())
 
 	return vs
 }
