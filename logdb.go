@@ -28,6 +28,10 @@ var (
 
 	// ErrCorrupt means that the database files are invalid.
 	ErrCorrupt = errors.New("database corrupted")
+
+	// ErrTooBig means that an entry could not be appended because
+	// it is larger than the chunk size.
+	ErrTooBig = errors.New("entry larger than chunksize")
 )
 
 const latestVersion = uint16(0)

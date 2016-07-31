@@ -286,6 +286,10 @@ func (db *chunkSliceDB) AppendEntries(entries [][]byte) error {
 }
 
 func (db *chunkSliceDB) append(entry []byte) error {
+	if uint32(len(entry)) > db.chunkSize {
+		return ErrTooBig
+	}
+
 	// If there are no chunks, create a new one.
 	if len(db.chunks) == 0 {
 		if err := db.newChunk(); err != nil {
