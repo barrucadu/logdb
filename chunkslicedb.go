@@ -459,19 +459,23 @@ func (db *chunkSliceDB) truncate(newOldestID, newNewestID uint64) error {
 	}
 
 	if first > 0 || last < len(db.chunks) {
-		// It did! Sync everything and then delete the files.
-		if err := db.sync(false); err != nil {
-			return err
-		}
+		// Delete the chunk files.
 		for i := last; i < len(db.chunks); i++ {
+			delete(db.syncDirty, db.chunks[i])
 			if err := db.chunks[i].closeAndRemove(); err != nil {
 				return &DeleteError{err}
 			}
 		}
 		for i := 0; i < first; i++ {
+			delete(db.syncDirty, db.chunks[i])
 			if err := db.chunks[i].closeAndRemove(); err != nil {
 				return &DeleteError{err}
 			}
+		}
+		// Then sync the db, including writing out the new
+		// oldest ID.
+		if err := db.sync(false); err != nil {
+			return err
 		}
 		db.chunks = db.chunks[first:last]
 	}
