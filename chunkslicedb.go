@@ -172,7 +172,7 @@ func createChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
 	return &chunkSliceDB{
 		path:      path,
 		chunkSize: chunkSize,
-		syncEvery: 100,
+		syncEvery: 256,
 		next:      1,
 		syncDirty: make(map[*chunk]struct{}),
 	}, nil

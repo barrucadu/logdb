@@ -136,7 +136,7 @@ type LogDB interface {
 	// rolled back.
 	//
 	// <0 disables periodic syncing, and 'Sync' must be called
-	// instead. The default value is 100.
+	// instead. The default value is 256.
 	//
 	// Returns a 'SyncError' value if this triggered an immediate
 	// synchronisation, which failed.
