@@ -14,8 +14,8 @@ var (
 	// in the log.
 	ErrIDOutOfRange = errors.New("log ID out of range")
 
-	// ErrUnknownVersion means that the requested disk format
-	// version is unknown.
+	// ErrUnknownVersion means that the disk format version of an
+	// opened database is unknown.
 	ErrUnknownVersion = errors.New("unknown disk format version")
 
 	// ErrPathExists means that the path given to 'Create' already
@@ -28,11 +28,9 @@ var (
 
 	// ErrCorrupt means that the database files are invalid.
 	ErrCorrupt = errors.New("database corrupted")
-
-	// Versions is a slice of all the supported disk format
-	// versions. Generally the highest version should be used.
-	Versions = []uint16{0}
 )
+
+const latestVersion = uint16(0)
 
 // ReadError means that a read failed. It wraps the actual error.
 type ReadError struct{ Err error }
@@ -163,7 +161,7 @@ type LogDB interface {
 	Close() error
 }
 
-// Create makes a new database with the given format version.
+// Create makes a new database.
 //
 // The log is stored on disk in fixed-size files, controlled by the
 // 'chunkSize' parameter. If entries are a fixed size, the chunk size
@@ -173,29 +171,10 @@ type LogDB interface {
 // calls to 'Forget' and 'Rollback'), so a larger chunk size means
 // fewer files, but longer persistence.
 //
-// The on-disk format is determined by the version, but there are some
-// commonalities: a database lives in a directory; there is a
-// "version" file containing the version number; there is also a
-// "chunk_size" file containing the chunk size; both the version
-// number and chunk size are written out in little-endian byte order.
-//
-// Returns 'ErrUnknownVersion' if the version number is not valid, a
-// 'PathError' value if the directory could not be created,
+// Returns a 'PathError' value if the directory could not be created,
 // 'ErrPathExists' if the directory already exists, and a 'WriteError'
 // value if the initial metadata files could not be created.
-func Create(path string, version uint16, chunkSize uint32) (LogDB, error) {
-	// Check the version number.
-	foundV := false
-	for _, v := range Versions {
-		if v == version {
-			foundV = true
-			break
-		}
-	}
-	if !foundV {
-		return nil, ErrUnknownVersion
-	}
-
+func Create(path string, chunkSize uint32) (LogDB, error) {
 	// Check if it already exists.
 	if stat, _ := os.Stat(path); stat != nil && stat.IsDir() {
 		return nil, ErrPathExists
@@ -207,7 +186,7 @@ func Create(path string, version uint16, chunkSize uint32) (LogDB, error) {
 	}
 
 	// Write the version file
-	if err := writeFile(path+"/version", version); err != nil {
+	if err := writeFile(path+"/version", latestVersion); err != nil {
 		return nil, &WriteError{err}
 	}
 
@@ -216,13 +195,7 @@ func Create(path string, version uint16, chunkSize uint32) (LogDB, error) {
 		return nil, &WriteError{err}
 	}
 
-	switch version {
-	case 0:
-		return createChunkSliceDB(path, chunkSize)
-	default:
-		// Should never reach here due to the guard at the beginning.
-		return nil, ErrUnknownVersion
-	}
+	return createChunkSliceDB(path, chunkSize)
 }
 
 // Open opens the database in the given path, detecting the format
