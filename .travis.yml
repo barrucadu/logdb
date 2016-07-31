@@ -6,6 +6,7 @@ go:
 install:
   - go get github.com/hashicorp/raft
   - go get github.com/ugorji/go/codec
+  - go get github.com/hashicorp/errwrap
   - go get github.com/stretchr/testify/assert
   - go get github.com/axw/gocov/gocov
   - go get github.com/mattn/goveralls

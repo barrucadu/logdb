@@ -5,6 +5,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/hashicorp/errwrap"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -179,6 +180,55 @@ func TestPersistTruncate(t *testing.T) {
 	}
 }
 
+func TestNoOpenFile(t *testing.T) {
+	if err := writeFile("test_db/no_open_file", uint8(1)); err != nil {
+		t.Fatal("could not write file: ", err)
+	}
+
+	createErr := assertCreateError(t, "no_open_file")
+	openErr := assertOpenError(t, "no_open_file")
+
+	assert.True(t, errwrap.ContainsType(createErr, ErrNotDirectory))
+	assert.True(t, errwrap.ContainsType(openErr, ErrNotDirectory))
+}
+
+func TestNoOpenMissing(t *testing.T) {
+	openErr := assertOpenError(t, "no_open_missing")
+	assert.True(t, errwrap.ContainsType(openErr, ErrPathDoesntExist))
+}
+
+func TestNoConcurrentOpen(t *testing.T) {
+	db := assertCreate(t, "no_concurrent_open", chunkSize)
+	_, lockerror := assertOpenError(t, "no_concurrent_open").(*LockError)
+	assert.True(t, lockerror, "expected lock error")
+
+	assertClose(t, db)
+	db2 := assertOpen(t, "no_concurrent_open")
+	assertClose(t, db2)
+}
+
+func TestNoOpenBadFiles(t *testing.T) {
+	if err := os.MkdirAll("test_db/no_open_bad_files", os.ModeDir|0755); err != nil {
+		t.Fatal("could not create directory: ", err)
+	}
+
+	_ = assertOpenError(t, "no_open_bad_files")
+
+	if err := writeFile("test_db/no_open_bad_files/version", uint16(42)); err != nil {
+		t.Fatal("could not write dummy version file: ", err)
+	}
+
+	_ = assertOpenError(t, "no_open_bad_files")
+
+	if err := writeFile("test_db/no_open_bad_files/chunk_size", uint32(1024)); err != nil {
+		t.Fatal("could not write dummy version file: ", err)
+	}
+
+	err := assertOpenError(t, "no_open_bad_files")
+
+	assert.True(t, errwrap.ContainsType(err, ErrUnknownVersion))
+}
+
 /// ASSERTIONS
 
 func assertCreate(t *testing.T, testName string, cSize uint32) LogDB {
@@ -190,12 +240,28 @@ func assertCreate(t *testing.T, testName string, cSize uint32) LogDB {
 	return db
 }
 
+func assertCreateError(t *testing.T, testName string) error {
+	_, err := Open("test_db/"+testName, 0, true)
+	if err == nil {
+		t.Fatal("should not be able to create database")
+	}
+	return err
+}
+
 func assertOpen(t *testing.T, testName string) LogDB {
 	db, err := Open("test_db/"+testName, 0, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return db
+}
+
+func assertOpenError(t *testing.T, testName string) error {
+	_, err := Open("test_db/"+testName, 0, false)
+	if err == nil {
+		t.Fatal("should not be able to open database")
+	}
+	return err
 }
 
 func assertClose(t *testing.T, db LogDB) {
