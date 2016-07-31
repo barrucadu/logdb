@@ -16,72 +16,13 @@ import (
 // with the backing store being a 'LogDB'.
 type LogStore struct {
 	Store  logdb.LogDB
-	Handle codec.Handle
+	handle codec.Handle
 }
 
-// UsingBinc creates a new 'LogStore' using binc to encode and decode
-// log entries.
-func UsingBinc(store logdb.LogDB) *LogStore {
-	h := new(codec.BincHandle)
-	h.ErrorIfNoField = true
-	h.InternString = true
-
-	return &LogStore{
-		Store:  store,
-		Handle: h,
-	}
-}
-
-// UsingCBOR creates a new 'LogStore' using CBOR to encode and decode
-// log entries.
-func UsingCBOR(store logdb.LogDB) *LogStore {
-	h := new(codec.CborHandle)
-	h.ErrorIfNoField = true
-	h.InternString = true
-
-	return &LogStore{
-		Store:  store,
-		Handle: h,
-	}
-}
-
-// UsingJSON creates a new 'LogStore' using JSON to encode and decode
-// log entries.
-func UsingJSON(store logdb.LogDB) *LogStore {
-	h := new(codec.JsonHandle)
-	h.ErrorIfNoField = true
-	h.InternString = true
-
-	return &LogStore{
-		Store:  store,
-		Handle: h,
-	}
-}
-
-// UsingMsgpack creates a new 'LogStore' using msgpack to encode and
-// decode log entries.
-func UsingMsgpack(store logdb.LogDB) *LogStore {
-	h := new(codec.MsgpackHandle)
-	h.ErrorIfNoField = true
-	h.InternString = true
-
-	return &LogStore{
-		Store:  store,
-		Handle: h,
-	}
-}
-
-// UsingSimple creates a new 'LogStore' using simple to encode and
-// decode log entries.
-func UsingSimple(store logdb.LogDB) *LogStore {
-	h := new(codec.SimpleHandle)
-	h.ErrorIfNoField = true
-	h.InternString = true
-
-	return &LogStore{
-		Store:  store,
-		Handle: h,
-	}
+// New creates a 'LogStore' backed by the given 'LogDB'. Log entries
+// are encoded with messagepack.
+func New(store logdb.LogDB) *LogStore {
+	return &LogStore{Store: store}
 }
 
 // FirstIndex returns the first index written. 0 for no entries.
@@ -100,27 +41,27 @@ func (l *LogStore) GetLog(index uint64, log *raft.Log) error {
 	if err != nil {
 		return raft.ErrLogNotFound
 	}
-	return codec.NewDecoderBytes(bs, l.Handle).Decode(log)
+	return l.decode(bs, log)
 }
 
 // StoreLog stores a log entry.
 func (l *LogStore) StoreLog(log *raft.Log) error {
-	buf := new(bytes.Buffer)
-	if err := codec.NewEncoder(buf, l.Handle).Encode(*log); err != nil {
+	bs, err := l.encode(log)
+	if err != nil {
 		return err
 	}
-	return l.Store.Append(buf.Bytes())
+	return l.Store.Append(bs)
 }
 
 // StoreLogs stores multiple log entries.
 func (l *LogStore) StoreLogs(logs []*raft.Log) error {
+	var err error
 	bss := make([][]byte, len(logs))
 	for i, log := range logs {
-		buf := new(bytes.Buffer)
-		if err := codec.NewEncoder(buf, l.Handle).Encode(*log); err != nil {
+		bss[i], err = l.encode(log)
+		if err != nil {
 			return err
 		}
-		bss[i] = buf.Bytes()
 	}
 	return l.Store.AppendEntries(bss)
 }
@@ -140,4 +81,32 @@ func (l *LogStore) DeleteRange(min, max uint64) error {
 // for anything else after doing this.
 func (l *LogStore) Close() error {
 	return l.Store.Close()
+}
+
+// Encode a log entry using messagepack.
+func (l *LogStore) encode(log *raft.Log) ([]byte, error) {
+	if l.handle == nil {
+		l.createHandle()
+	}
+
+	buf := new(bytes.Buffer)
+	err := codec.NewEncoder(buf, l.handle).Encode(*log)
+	return buf.Bytes(), err
+}
+
+// Decode a log entry using messagepack.
+func (l *LogStore) decode(bs []byte, log *raft.Log) error {
+	if l.handle == nil {
+		l.createHandle()
+	}
+
+	return codec.NewDecoderBytes(bs, l.handle).Decode(log)
+}
+
+// Set the codec handle.
+func (l *LogStore) createHandle() {
+	h := new(codec.MsgpackHandle)
+	h.ErrorIfNoField = true
+	h.InternString = true
+	l.handle = h
 }

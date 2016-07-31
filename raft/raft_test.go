@@ -131,7 +131,7 @@ func assertCreate(t *testing.T, testName string) *LogStore {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return UsingMsgpack(db)
+	return New(db)
 }
 
 func assertClose(t *testing.T, db *LogStore) {
