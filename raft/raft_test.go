@@ -125,7 +125,7 @@ func TestDeleteRangeFromEnd(t *testing.T) {
 
 /// ASSERTIONS
 
-func assertCreate(t *testing.T, testName string) *LogStore {
+func assertCreate(t testing.TB, testName string) *LogStore {
 	_ = os.RemoveAll("../test_db/raft/" + testName)
 	db, err := logdb.Create("../test_db/raft/"+testName, 1024)
 	if err != nil {
@@ -134,13 +134,13 @@ func assertCreate(t *testing.T, testName string) *LogStore {
 	return New(db)
 }
 
-func assertClose(t *testing.T, db *LogStore) {
+func assertClose(t testing.TB, db *LogStore) {
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func assertFirstIndex(t *testing.T, db *LogStore) uint64 {
+func assertFirstIndex(t testing.TB, db *LogStore) uint64 {
 	index, err := db.FirstIndex()
 	if err != nil {
 		t.Fatal(err)
@@ -148,7 +148,7 @@ func assertFirstIndex(t *testing.T, db *LogStore) uint64 {
 	return index
 }
 
-func assertLastIndex(t *testing.T, db *LogStore) uint64 {
+func assertLastIndex(t testing.TB, db *LogStore) uint64 {
 	index, err := db.LastIndex()
 	if err != nil {
 		t.Fatal(err)
@@ -156,7 +156,7 @@ func assertLastIndex(t *testing.T, db *LogStore) uint64 {
 	return index
 }
 
-func assertGetLog(t *testing.T, db *LogStore, index uint64) *raft.Log {
+func assertGetLog(t testing.TB, db *LogStore, index uint64) *raft.Log {
 	log := new(raft.Log)
 	if err := db.GetLog(index, log); err != nil {
 		t.Fatal(err)
@@ -164,19 +164,19 @@ func assertGetLog(t *testing.T, db *LogStore, index uint64) *raft.Log {
 	return log
 }
 
-func assertStoreLog(t *testing.T, db *LogStore, log *raft.Log) {
+func assertStoreLog(t testing.TB, db *LogStore, log *raft.Log) {
 	if err := db.StoreLog(log); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func assertStoreLogs(t *testing.T, db *LogStore, logs []*raft.Log) {
+func assertStoreLogs(t testing.TB, db *LogStore, logs []*raft.Log) {
 	if err := db.StoreLogs(logs); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func assertDeleteRange(t *testing.T, db *LogStore, min, max uint64) {
+func assertDeleteRange(t testing.TB, db *LogStore, min, max uint64) {
 	if err := db.DeleteRange(min, max); err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +184,7 @@ func assertDeleteRange(t *testing.T, db *LogStore, min, max uint64) {
 
 /// UTILITIES
 
-func filldb(t *testing.T, db *LogStore) []*raft.Log {
+func filldb(t testing.TB, db *LogStore) []*raft.Log {
 	logs := make([]*raft.Log, numEntries)
 	for i := 0; i < len(logs); i++ {
 		logs[i] = &raft.Log{
