@@ -246,15 +246,3 @@ func opendb(path string) (LogDB, error) {
 		return nil, ErrUnknownVersion
 	}
 }
-
-func defaultAppend(db LogDB, entry []byte) error {
-	return db.AppendEntries([][]byte{entry})
-}
-
-func defaultForget(db LogDB, newOldestID uint64) error {
-	return db.Truncate(newOldestID, db.NewestID())
-}
-
-func defaultRollback(db LogDB, newNewestID uint64) error {
-	return db.Truncate(db.OldestID(), newNewestID)
-}

@@ -279,7 +279,7 @@ func openChunkFile(basedir string, fi os.FileInfo) (chunk, error) {
 }
 
 func (db *chunkSliceDB) Append(entry []byte) error {
-	return defaultAppend(db, entry)
+	return db.AppendEntries([][]byte{entry})
 }
 
 func (db *chunkSliceDB) AppendEntries(entries [][]byte) error {
@@ -430,11 +430,15 @@ func (db *chunkSliceDB) Get(id uint64) ([]byte, error) {
 }
 
 func (db *chunkSliceDB) Forget(newOldestID uint64) error {
-	return defaultForget(db, newOldestID)
+	db.rwlock.Lock()
+	defer db.rwlock.Unlock()
+	return db.truncate(newOldestID, db.NewestID())
 }
 
 func (db *chunkSliceDB) Rollback(newNewestID uint64) error {
-	return defaultRollback(db, newNewestID)
+	db.rwlock.Lock()
+	defer db.rwlock.Unlock()
+	return db.truncate(db.OldestID(), newNewestID)
 }
 
 func (db *chunkSliceDB) Truncate(newOldestID, newNewestID uint64) error {
