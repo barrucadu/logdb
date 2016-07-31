@@ -489,13 +489,6 @@ func (db *chunkSliceDB) truncate(newOldestID, newNextID uint64) error {
 	return db.periodicSync(false)
 }
 
-func (db *chunkSliceDB) Clone(path string, version uint16, chunkSize uint32) (LogDB, error) {
-	db.rwlock.RLock()
-	defer db.rwlock.RUnlock()
-
-	panic("unimplemented")
-}
-
 func (db *chunkSliceDB) SetSync(every int) error {
 	db.syncEvery = every
 

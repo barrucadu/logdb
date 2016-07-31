@@ -20,8 +20,8 @@ var (
 	// version is unknown.
 	ErrUnknownVersion = errors.New("unknown disk format version")
 
-	// ErrPathExists means that the path given to 'Create' or
-	// 'Clone' already exists.
+	// ErrPathExists means that the path given to 'Create' already
+	// exists.
 	ErrPathExists = errors.New("database directory already exists")
 
 	// ErrPathDoesntExist means that the path given to 'Open' does
@@ -163,13 +163,6 @@ type LogDB interface {
 	//
 	// Returns the same errors as 'Forget' and 'Rollback'.
 	Truncate(newOldestID, newNextID uint64) error
-
-	// Clone copies a database to a new path, using the given
-	// format version and chunk size. This may be more efficient
-	// than simply copying every entry.
-	//
-	// Returns the same errors as 'Create' and 'Sync'.
-	Clone(path string, version uint16, chunkSize uint32) (LogDB, error)
 
 	// Synchronise the data to disk after touching (appending,
 	// forgetting, or rolling back) at most this many entries.
