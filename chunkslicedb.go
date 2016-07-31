@@ -447,7 +447,11 @@ func (db *chunkSliceDB) truncate(newOldestID, newNextID uint64) error {
 	// Remove the metadata for any entries being rolled back.
 	for i := len(db.chunks) - 1; i >= 0 && db.chunks[i].next >= newNextID; i-- {
 		c := db.chunks[i]
-		c.ends = c.ends[0 : uint64(len(c.ends))-(c.next-newNextID)]
+		if c.next-newNextID > uint64(len(c.ends)) {
+			c.ends = nil
+		} else {
+			c.ends = c.ends[0 : uint64(len(c.ends))-(c.next-newNextID)]
+		}
 		if !c.dirty {
 			c.dirty = true
 			db.syncDirty = append(db.syncDirty, i)
