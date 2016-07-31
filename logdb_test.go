@@ -183,7 +183,7 @@ func TestPersistTruncate(t *testing.T) {
 
 func assertCreate(t *testing.T, testName string, cSize uint32) LogDB {
 	_ = os.RemoveAll("test_db/" + testName)
-	db, err := Create("test_db/"+testName, cSize)
+	db, err := Open("test_db/"+testName, cSize, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +191,7 @@ func assertCreate(t *testing.T, testName string, cSize uint32) LogDB {
 }
 
 func assertOpen(t *testing.T, testName string) LogDB {
-	db, err := Open("test_db/" + testName)
+	db, err := Open("test_db/"+testName, 0, false)
 	if err != nil {
 		t.Fatal(err)
 	}

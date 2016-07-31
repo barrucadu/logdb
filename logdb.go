@@ -18,12 +18,12 @@ var (
 	// opened database is unknown.
 	ErrUnknownVersion = errors.New("unknown disk format version")
 
-	// ErrPathExists means that the path given to 'Create' already
-	// exists.
-	ErrPathExists = errors.New("database directory already exists")
+	// ErrNotDirectory means that the path given to 'Open' exists
+	// and is not a directory.
+	ErrNotDirectory = errors.New("database path not a directory")
 
 	// ErrPathDoesntExist means that the path given to 'Open' does
-	// not exist.
+	// not exist and the 'create' flag was false.
 	ErrPathDoesntExist = errors.New("database directory does not exist")
 
 	// ErrCorrupt means that the database files are invalid.
@@ -164,7 +164,15 @@ type LogDB interface {
 	Close() error
 }
 
-// Create makes a new database.
+// Open a database.
+//
+// It is not safe to have multiple open references to the same
+// database at the same time, across any number of processes.
+// Concurrent usage of one open reference in a single process is safe.
+//
+// If the 'create' flag is true and the database doesn't already
+// exist, the database is created using the given chunk size. If the
+// database does exist, the chunk size is detected automatically.
 //
 // The log is stored on disk in fixed-size files, controlled by the
 // 'chunkSize' parameter. If entries are a fixed size, the chunk size
@@ -173,16 +181,23 @@ type LogDB interface {
 // not overlap with the live entries at all (this happens through
 // calls to 'Forget' and 'Rollback'), so a larger chunk size means
 // fewer files, but longer persistence.
-//
-// Returns a 'PathError' value if the directory could not be created,
-// 'ErrPathExists' if the directory already exists, and a 'WriteError'
-// value if the initial metadata files could not be created.
-func Create(path string, chunkSize uint32) (LogDB, error) {
+func Open(path string, chunkSize uint32, create bool) (LogDB, error) {
 	// Check if it already exists.
-	if stat, _ := os.Stat(path); stat != nil && stat.IsDir() {
-		return nil, ErrPathExists
+	if stat, _ := os.Stat(path); stat != nil {
+		if !stat.IsDir() {
+			return nil, ErrNotDirectory
+		}
+		return opendb(path)
 	}
+	if create {
+		return createdb(path, chunkSize)
+	}
+	return nil, ErrPathDoesntExist
+}
 
+// Create a database. It is an error to call this function if the
+// database directory already exists.
+func createdb(path string, chunkSize uint32) (LogDB, error) {
 	// Create the directory.
 	if err := os.MkdirAll(path, os.ModeDir|0755); err != nil {
 		return nil, &PathError{err}
@@ -201,24 +216,9 @@ func Create(path string, chunkSize uint32) (LogDB, error) {
 	return createChunkSliceDB(path, chunkSize)
 }
 
-// Open opens the database in the given path, detecting the format
-// version automatically.
-//
-// It is not safe to have multiple open references to the same
-// database at the same time, across any number of processes.
-// Concurrent usage of one open reference in a single process is safe.
-//
-// Returns 'ErrPathDoesntExist' if the directory does not exist, a
-// 'ReadError' value if the directory cannot be read,
-// 'ErrUnknownVersion' if the detected version is not valid, and
-// 'ErrCorrupt' if the database could be understood.
-func Open(path string) (LogDB, error) {
-	// Check if it's a directory.
-	stat, _ := os.Stat(path)
-	if stat != nil && !stat.IsDir() {
-		return nil, ErrPathDoesntExist
-	}
-
+// Open an existing database. It is an error to call this function if
+// the database directory does not exist.
+func opendb(path string) (LogDB, error) {
 	// Read the "version" file.
 	var version uint16
 	if err := readFile(path+"/version", &version); err != nil {

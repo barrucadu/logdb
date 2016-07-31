@@ -55,7 +55,7 @@ func BenchmarkDeleteRange(b *testing.B) {
 
 func assertCreateForBench(b *testing.B, benchName string) *LogStore {
 	_ = os.RemoveAll("../test_db/raft-bench/" + benchName)
-	db, err := logdb.Create("../test_db/raft-bench/"+benchName, 1024*1024)
+	db, err := logdb.Open("../test_db/raft-bench/"+benchName, 1024*1024, true)
 	if err != nil {
 		b.Fatal(err)
 	}

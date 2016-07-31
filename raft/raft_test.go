@@ -127,7 +127,7 @@ func TestDeleteRangeFromEnd(t *testing.T) {
 
 func assertCreate(t testing.TB, testName string) *LogStore {
 	_ = os.RemoveAll("../test_db/raft/" + testName)
-	db, err := logdb.Create("../test_db/raft/"+testName, 1024)
+	db, err := logdb.Open("../test_db/raft/"+testName, 1024, true)
 	if err != nil {
 		t.Fatal(err)
 	}
