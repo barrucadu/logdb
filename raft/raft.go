@@ -72,7 +72,7 @@ func (l *LogStore) StoreLogs(logs []*raft.Log) error {
 // Rollback: deletion is always from one end.
 func (l *LogStore) DeleteRange(min, max uint64) error {
 	if min <= l.Store.OldestID() {
-		return l.Store.Forget(max)
+		return l.Store.Forget(max + 1)
 	}
 	return l.Store.Rollback(min - 1)
 }

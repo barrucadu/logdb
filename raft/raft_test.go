@@ -81,7 +81,7 @@ func TestDeleteRangeFromStart(t *testing.T) {
 
 	first := assertFirstIndex(t, db)
 	toDelete := uint64(50)
-	assertDeleteRange(t, db, first, first+toDelete)
+	assertDeleteRange(t, db, first, toDelete)
 
 	assert.Equal(t, first+toDelete, assertFirstIndex(t, db))
 
