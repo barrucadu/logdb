@@ -463,11 +463,13 @@ func (db *chunkSliceDB) truncate(newOldestID, newNewestID uint64) error {
 		if err := db.sync(false); err != nil {
 			return err
 		}
-		for i, c := range db.chunks {
-			if i >= first && i < last {
-				continue
+		for i := last; i < len(db.chunks); i++ {
+			if err := db.chunks[i].closeAndRemove(); err != nil {
+				return &DeleteError{err}
 			}
-			if err := c.closeAndRemove(); err != nil {
+		}
+		for i := 0; i < first; i++ {
+			if err := db.chunks[i].closeAndRemove(); err != nil {
 				return &DeleteError{err}
 			}
 		}
