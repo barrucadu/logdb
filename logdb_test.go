@@ -66,50 +66,6 @@ func TestAppendEntries(t *testing.T) {
 	}
 }
 
-func TestAppendValue(t *testing.T) {
-	db := assertCreate(t, "append_value", chunkSize)
-	defer assertClose(t, db)
-
-	vs := make([]uint64, numEntries)
-	for i := 0; i < len(vs); i++ {
-		vs[i] = uint64(0x0FDCBA9876543210 | i)
-	}
-
-	for _, v := range vs {
-		assertAppendValue(t, db, v)
-	}
-
-	assert.Equal(t, firstID, db.OldestID())
-	assert.Equal(t, uint64(len(vs))+1, db.NextID())
-
-	for i, v := range vs {
-		var v2 uint64
-		assertGetValue(t, db, uint64(i+1), &v2)
-		assert.Equal(t, v, v2)
-	}
-}
-
-func TestAppendValues(t *testing.T) {
-	db := assertCreate(t, "append_values", chunkSize)
-	defer assertClose(t, db)
-
-	vs := make([]interface{}, numEntries)
-	for i := 0; i < len(vs); i++ {
-		vs[i] = uint64(0x0FDCBA9876543210 | i)
-	}
-
-	assertAppendValues(t, db, vs)
-
-	assert.Equal(t, firstID, db.OldestID())
-	assert.Equal(t, uint64(len(vs))+1, db.NextID())
-
-	for i, v := range vs {
-		var v2 uint64
-		assertGetValue(t, db, uint64(i+1), &v2)
-		assert.Equal(t, v, v2)
-	}
-}
-
 func TestPersist(t *testing.T) {
 	db := assertCreate(t, "persist", chunkSize)
 
@@ -254,20 +210,8 @@ func assertAppend(t *testing.T, db LogDB, entry []byte) {
 	}
 }
 
-func assertAppendValue(t *testing.T, db LogDB, value interface{}) {
-	if err := db.AppendValue(value); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func assertAppendEntries(t *testing.T, db LogDB, entries [][]byte) {
 	if err := db.AppendEntries(entries); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func assertAppendValues(t *testing.T, db LogDB, values []interface{}) {
-	if err := db.AppendValues(values); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -278,12 +222,6 @@ func assertGet(t *testing.T, db LogDB, id uint64) []byte {
 		t.Fatal(err)
 	}
 	return b
-}
-
-func assertGetValue(t *testing.T, db LogDB, id uint64, data interface{}) {
-	if err := db.GetValue(id, data); err != nil {
-		t.Fatal(err)
-	}
 }
 
 func assertForget(t *testing.T, db LogDB, newOldestID uint64) {

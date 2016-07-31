@@ -4,8 +4,6 @@
 package logdb
 
 import (
-	"bytes"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"os"
@@ -85,13 +83,6 @@ func (e *AtomicityError) WrappedErrors() []error {
 	return []error{e.AppendErr, e.RollbackErr}
 }
 
-// BinaryError means that a call in to encoding/binary failed. It
-// wraps the actual error.
-type BinaryError struct{ Err error }
-
-func (e *BinaryError) Error() string          { return e.Err.Error() }
-func (e *BinaryError) WrappedErrors() []error { return []error{e.Err} }
-
 // A LogDB is a reference to an efficient log-structured database
 // providing ACID consistency guarantees.
 type LogDB interface {
@@ -102,15 +93,6 @@ type LogDB interface {
 	// synchronisation failed.
 	Append(entry []byte) error
 
-	// AppendValue encodes the given value (which must be a
-	// fixed-size value, a slice of fixed-size values, or a
-	// pointer to such data) with 'encoding/binary.Write' as
-	// little-endian data and writes it to the log.
-	//
-	// Returns the same errors as 'Append', and a 'BinaryError'
-	// value if the encoding fails.
-	AppendValue(value interface{}) error
-
 	// Atomically write a collection of new entries to the log.
 	//
 	// Returns the same errors as 'Append', and an
@@ -118,29 +100,11 @@ type LogDB interface {
 	// rolling back the log failed.
 	AppendEntries(entries [][]byte) error
 
-	// AppendValues encodes the given values (which must be a
-	// fixed-size value, a slice of fixed-size values, or a
-	// pointer to such data) with 'encoding/binary.Write' as
-	// little-endian data and writes them to the log atomically.
-	//
-	// Returns the same errors as 'AppendEntries', and a
-	// 'BinaryError' value if the encoding fails.
-	AppendValues(values []interface{}) error
-
 	// Get looks up an entry by ID.
 	//
 	// Returns 'ErrIDOutOfRange' if the requested ID is lesser
 	// than the oldest or greater than the newest.
 	Get(id uint64) ([]byte, error)
-
-	// GetValue looks up an entry by ID and reads it as
-	// little-endian binary data with 'encoding/binary.Read'. The
-	// data argument must be a pointer to a fixed-size value or a
-	// slice of fized-size values.
-	//
-	// Returns the same errors as 'Get', and a 'BinaryError' if
-	// the decoding fails.
-	GetValue(id uint64, data interface{}) error
 
 	// Forget removes entries from the end of the log.
 	//
@@ -302,43 +266,6 @@ func Open(path string) (LogDB, error) {
 
 func defaultAppend(db LogDB, entry []byte) error {
 	return db.AppendEntries([][]byte{entry})
-}
-
-// Like 'Append', but sends its argument through
-// 'encoding/binary.Write'.
-func defaultAppendValue(db LogDB, value interface{}) error {
-	buf := new(bytes.Buffer)
-	if err := binary.Write(buf, binary.LittleEndian, value); err != nil {
-		return &BinaryError{err}
-	}
-	return db.Append(buf.Bytes())
-}
-
-// Like 'AppendEntries' but sends each value through
-// 'encoding/binary.Write'.
-func defaultAppendValues(db LogDB, values []interface{}) error {
-	bss := make([][]byte, len(values))
-	for i, value := range values {
-		buf := new(bytes.Buffer)
-		if err := binary.Write(buf, binary.LittleEndian, value); err != nil {
-			return &BinaryError{err}
-		}
-		bss[i] = buf.Bytes()
-	}
-	return db.AppendEntries(bss)
-}
-
-// Like 'Get', but sends the resulting bytes through
-// 'encoding/binary.Read'.
-func defaultGetValue(db LogDB, id uint64, value interface{}) error {
-	bs, err := db.Get(id)
-	if err != nil {
-		return err
-	}
-	if err := binary.Read(bytes.NewReader(bs), binary.LittleEndian, value); err != nil {
-		return &BinaryError{err}
-	}
-	return nil
 }
 
 func defaultForget(db LogDB, newOldestID uint64) error {
