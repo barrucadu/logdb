@@ -37,7 +37,7 @@ type chunkSliceDB struct {
 
 	syncEvery     int
 	sinceLastSync uint64
-	syncDirty     []int
+	syncDirty     map[*chunk]struct{}
 }
 
 // A chunk is one memory-mapped file.
@@ -60,8 +60,6 @@ type chunk struct {
 	oldest uint64
 
 	next uint64
-
-	dirty bool
 }
 
 // Delete the files associated with a chunk.
@@ -176,6 +174,7 @@ func createChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
 		chunkSize: chunkSize,
 		syncEvery: 100,
 		next:      1,
+		syncDirty: make(map[*chunk]struct{}),
 	}, nil
 }
 
@@ -218,6 +217,7 @@ func openChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
 		oldest:    oldest,
 		next:      next,
 		syncEvery: 100,
+		syncDirty: make(map[*chunk]struct{}),
 	}, nil
 }
 
@@ -332,12 +332,9 @@ func (db *chunkSliceDB) append(entry []byte) error {
 		lastChunk.oldest = 1
 	}
 
-	// Mark the current chunk as dirty and perform a periodic sync.
+	// Mark the current chunk as dirty.
 	db.sinceLastSync++
-	if !lastChunk.dirty {
-		lastChunk.dirty = true
-		db.syncDirty = append(db.syncDirty, len(db.chunks)-1)
-	}
+	db.syncDirty[lastChunk] = struct{}{}
 	return nil
 }
 
@@ -445,10 +442,7 @@ func (db *chunkSliceDB) truncate(newOldestID, newNewestID uint64) error {
 		} else {
 			c.ends = c.ends[0 : uint64(len(c.ends))-(c.next-newNextID)]
 		}
-		if !c.dirty {
-			c.dirty = true
-			db.syncDirty = append(db.syncDirty, i)
-		}
+		db.syncDirty[c] = struct{}{}
 	}
 
 	db.sinceLastSync += newOldestID - db.oldest
@@ -514,38 +508,37 @@ func (db *chunkSliceDB) sync(acquireLock bool) error {
 		defer db.rwlock.RUnlock()
 	}
 
-	for _, i := range db.syncDirty {
+	for c, _ := range db.syncDirty {
 		// To ensure ACID, sync the data first and only then
 		// the metadata. This means that if there is a failure
 		// between the two syncs, even if the newly-written
 		// data is corrupt, there will be no metadata
 		// referring to it, and so it will be invisible to the
 		// database when next opened.
-		if err := fsync(db.chunks[i].mmapf); err != nil {
+		if err := fsync(c.mmapf); err != nil {
 			return &SyncError{err}
 		}
 
 		metaBuf := new(bytes.Buffer)
-		if err := binary.Write(metaBuf, binary.LittleEndian, db.chunks[i].oldest); err != nil {
+		if err := binary.Write(metaBuf, binary.LittleEndian, c.oldest); err != nil {
 			return err
 		}
-		for _, end := range db.chunks[i].ends {
+		for _, end := range c.ends {
 			if err := binary.Write(metaBuf, binary.LittleEndian, end); err != nil {
 				return err
 			}
 		}
-		if err := writeFile(metaFilePath(db.chunks[i]), metaBuf.Bytes()); err != nil {
+		if err := writeFile(metaFilePath(c), metaBuf.Bytes()); err != nil {
 			return &SyncError{err}
 		}
-		db.chunks[i].dirty = false
 	}
+	db.syncDirty = make(map[*chunk]struct{})
 
 	// Write the oldest entry ID.
 	if err := writeFile(db.path+"/oldest", db.oldest); err != nil {
 		return &SyncError{err}
 	}
 
-	db.syncDirty = nil
 	db.sinceLastSync = 0
 
 	return nil
