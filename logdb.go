@@ -55,19 +55,26 @@ type PathError struct{ Err error }
 func (e *PathError) Error() string          { return e.Err.Error() }
 func (e *PathError) WrappedErrors() []error { return []error{e.Err} }
 
-// SyncError means that a a file could not be synced to disk. It wraps
+// SyncError means that a file could not be synced to disk. It wraps
 // the actual error.
 type SyncError struct{ Err error }
 
 func (e *SyncError) Error() string          { return e.Err.Error() }
 func (e *SyncError) WrappedErrors() []error { return []error{e.Err} }
 
-// DeleteError means that a a file could not be deleted from disk. It
+// DeleteError means that a file could not be deleted from disk. It
 // wraps the actual error.
 type DeleteError struct{ Err error }
 
 func (e *DeleteError) Error() string          { return e.Err.Error() }
 func (e *DeleteError) WrappedErrors() []error { return []error{e.Err} }
+
+// LockError means that the database files could not be locked. It
+// wraps the actual error.
+type LockError struct{ Err error }
+
+func (e *LockError) Error() string          { return e.Err.Error() }
+func (e *LockError) WrappedErrors() []error { return []error{e.Err} }
 
 // AtomicityError means that an error occurred while appending an
 // entry in an 'AppendEntries' call, and attempting to rollback also

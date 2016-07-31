@@ -17,6 +17,8 @@ import (
 type chunkSliceDB struct {
 	path string
 
+	lockfile *os.File
+
 	// Any number of goroutines can read simultaneously, but when
 	// entries are added or removed, the write lock must be held.
 	//
@@ -164,6 +166,12 @@ func (fis fileInfoSlice) Less(i, j int) bool {
 }
 
 func createChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
+	// Lock the "version" file.
+	lockfile, err := flock(path + "/version")
+	if err != nil {
+		return nil, &LockError{err}
+	}
+
 	// Write the "oldest" file.
 	if err := writeFile(path+"/oldest", uint64(0)); err != nil {
 		return nil, &WriteError{err}
@@ -171,6 +179,7 @@ func createChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
 
 	return &chunkSliceDB{
 		path:      path,
+		lockfile:  lockfile,
 		chunkSize: chunkSize,
 		syncEvery: 256,
 		next:      1,
@@ -179,6 +188,12 @@ func createChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
 }
 
 func openChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
+	// Lock the "version" file.
+	lockfile, err := flock(path + "/version")
+	if err != nil {
+		return nil, &LockError{err}
+	}
+
 	// Read the "oldest" file.
 	var oldest uint64
 	if err := readFile(path+"/oldest", &oldest); err != nil {
@@ -212,6 +227,7 @@ func openChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
 
 	return &chunkSliceDB{
 		path:      path,
+		lockfile:  lockfile,
 		chunkSize: chunkSize,
 		chunks:    chunks,
 		oldest:    oldest,
@@ -569,6 +585,15 @@ func (db *chunkSliceDB) Close() error {
 	for _, c := range db.chunks {
 		_ = c.mmapf.Close()
 	}
+
+	// Then release the lock
+	funlock(db.lockfile)
+
+	// Nuke the state, so that any further attempts to use this
+	// handle will die quickly.
+	db.lockfile = nil
+	db.chunks = nil
+	db.syncDirty = nil
 
 	return err
 }

@@ -76,3 +76,19 @@ func closeAndRemove(file *os.File) error {
 	}
 	return os.Remove(file.Name())
 }
+
+// Open and lock a file.
+func flock(path string) (*os.File, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	return f, syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+}
+
+// Unlock and close a file.
+func funlock(file *os.File) error {
+	// No need to do a flock(LOCK_UN) call, as closing the fd also
+	// releases the lock.
+	return file.Close()
+}
