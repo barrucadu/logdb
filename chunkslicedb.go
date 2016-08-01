@@ -560,45 +560,9 @@ func (db *chunkSliceDB) sync(acquireLock bool) error {
 	}
 
 	for c, _ := range db.syncDirty {
-		// To ensure ACID, sync the data first and only then
-		// the metadata. This means that if there is a failure
-		// between the two syncs, even if the newly-written
-		// data is corrupt, there will be no metadata
-		// referring to it, and so it will be invisible to the
-		// database when next opened.
-		if err := fsync(c.mmapf); err != nil {
+		if err := c.sync(); err != nil {
 			return &SyncError{err}
 		}
-
-		// If there was a rollback which affected this chunk,
-		// rewrite all the metadata. Otherwise only write the
-		// new end points.
-		metaBuf := new(bytes.Buffer)
-		if c.rollback {
-			if err := binary.Write(metaBuf, binary.LittleEndian, c.oldest); err != nil {
-				return err
-			}
-			for _, end := range c.ends {
-				if err := binary.Write(metaBuf, binary.LittleEndian, end); err != nil {
-					return err
-				}
-			}
-			if err := writeFile(metaFilePath(c), metaBuf.Bytes()); err != nil {
-				return &SyncError{err}
-			}
-		} else {
-			for i := c.newFrom; i < len(c.ends); i++ {
-				if err := binary.Write(metaBuf, binary.LittleEndian, c.ends[i]); err != nil {
-					return err
-				}
-			}
-			if err := appendFile(metaFilePath(c), metaBuf.Bytes()); err != nil {
-				return &SyncError{err}
-			}
-		}
-
-		c.rollback = false
-		c.newFrom = len(c.ends)
 	}
 	db.syncDirty = make(map[*chunk]struct{})
 
@@ -608,6 +572,49 @@ func (db *chunkSliceDB) sync(acquireLock bool) error {
 	}
 
 	db.sinceLastSync = 0
+
+	return nil
+}
+
+// Write a chunk to disk.
+func (c *chunk) sync() error {
+	// To ensure ACID, sync the data first and only then the
+	// metadata. This means that if there is a failure between the
+	// two syncs, even if the newly-written data is corrupt, there
+	// will be no metadata referring to it, and so it will be
+	// invisible to the database when next opened.
+	if err := fsync(c.mmapf); err != nil {
+		return err
+	}
+
+	// If there was a rollback which affected this chunk, rewrite
+	// all the metadata. Otherwise only write the new end points.
+	metaBuf := new(bytes.Buffer)
+	if c.rollback {
+		if err := binary.Write(metaBuf, binary.LittleEndian, c.oldest); err != nil {
+			return err
+		}
+		for _, end := range c.ends {
+			if err := binary.Write(metaBuf, binary.LittleEndian, end); err != nil {
+				return err
+			}
+		}
+		if err := writeFile(metaFilePath(c), metaBuf.Bytes()); err != nil {
+			return err
+		}
+	} else {
+		for i := c.newFrom; i < len(c.ends); i++ {
+			if err := binary.Write(metaBuf, binary.LittleEndian, c.ends[i]); err != nil {
+				return err
+			}
+		}
+		if err := appendFile(metaFilePath(c), metaBuf.Bytes()); err != nil {
+			return err
+		}
+	}
+
+	c.rollback = false
+	c.newFrom = len(c.ends)
 
 	return nil
 }
