@@ -379,14 +379,11 @@ func (db *LogDB) append(entry []byte) error {
 		return ErrTooBig
 	}
 
-	isNewChunk := false
-
 	// If there are no chunks, create a new one.
 	if len(db.chunks) == 0 {
 		if err := db.newChunk(); err != nil {
 			return &WriteError{err}
 		}
-		isNewChunk = true
 	}
 
 	lastChunk := db.chunks[len(db.chunks)-1]
@@ -400,7 +397,6 @@ func (db *LogDB) append(entry []byte) error {
 				return &WriteError{err}
 			}
 			lastChunk = db.chunks[len(db.chunks)-1]
-			isNewChunk = true
 		}
 	}
 
@@ -425,15 +421,9 @@ func (db *LogDB) append(entry []byte) error {
 		lastChunk.oldest = 1
 	}
 
-	// Mark the current chunk as dirty, unless it's a new chunk:
-	// in which case sync it immediately (to avoid an empty chunk
-	// on disk)
-	if isNewChunk {
-		lastChunk.sync()
-	} else {
-		db.sinceLastSync++
-		db.syncDirty[lastChunk] = struct{}{}
-	}
+	// Mark the current chunk as dirty.
+	db.sinceLastSync++
+	db.syncDirty[lastChunk] = struct{}{}
 	return nil
 }
 
@@ -545,7 +535,17 @@ func (db *LogDB) sync() error {
 	db.slock.Lock()
 	defer db.slock.Unlock()
 
+	// Produce a sorted list of chunks to sync.
+	dirtyChunks := make([]*chunk, len(db.syncDirty))
+	var i int
 	for c, _ := range db.syncDirty {
+		dirtyChunks[i] = c
+		i++
+	}
+	sort.Sort(chunkSlice(dirtyChunks))
+
+	// Sync the chunks in order.
+	for _, c := range dirtyChunks {
 		if c.delete {
 			if err := c.closeAndRemove(); err != nil {
 				return &SyncError{&DeleteError{err}}
@@ -554,13 +554,13 @@ func (db *LogDB) sync() error {
 			return &SyncError{err}
 		}
 	}
-	db.syncDirty = make(map[*chunk]struct{})
 
 	// Write the oldest entry ID.
 	if err := writeFile(db.path+"/oldest", db.oldest); err != nil {
 		return &SyncError{err}
 	}
 
+	db.syncDirty = make(map[*chunk]struct{})
 	db.sinceLastSync = 0
 
 	return nil
