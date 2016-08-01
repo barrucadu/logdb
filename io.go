@@ -24,7 +24,21 @@ func createFile(path string, size uint32) error {
 // it is truncated. The contents of the file are synced to disk after
 // the write.
 func writeFile(path string, data interface{}) error {
-	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+	return openAndWriteFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, data)
+}
+
+// Append the given value to the file using little-endian byte order.
+// If the file doesn't exist, it is created. The contents of the file
+// are synced to disk after the write.
+func appendFile(path string, data interface{}) error {
+	return openAndWriteFile(path, os.O_RDWR|os.O_CREATE|os.O_APPEND, data)
+}
+
+// Open a file with the given flags and write the given data to it in
+// little-endian byte order. The contents of the file are synced to
+// disk after the write.
+func openAndWriteFile(path string, flags int, data interface{}) error {
+	file, err := os.OpenFile(path, flags, 0644)
 	if err != nil {
 		return err
 	}

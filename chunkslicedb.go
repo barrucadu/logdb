@@ -62,6 +62,9 @@ type chunk struct {
 	oldest uint64
 
 	next uint64
+
+	newFrom  int
+	rollback bool
 }
 
 // Delete the files associated with a chunk.
@@ -216,12 +219,14 @@ func openChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
 	// Populate the chunk slice.
 	chunks := make([]*chunk, len(chunkFiles))
 	next := uint64(1)
+	var prior *chunk
 	for i, fi := range chunkFiles {
-		c, err := openChunkFile(path, fi)
+		c, err := openChunkFile(path, fi, prior, false)
 		if err != nil {
 			return nil, err
 		}
 		chunks[i] = &c
+		prior = &c
 		next = c.next
 	}
 
@@ -238,7 +243,7 @@ func openChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
 }
 
 // Open a chunk file
-func openChunkFile(basedir string, fi os.FileInfo) (chunk, error) {
+func openChunkFile(basedir string, fi os.FileInfo, priorChunk *chunk, allowEmpty bool) (chunk, error) {
 	chunk := chunk{path: basedir + "/" + fi.Name()}
 
 	// mmap the data file
@@ -255,7 +260,7 @@ func openChunkFile(basedir string, fi os.FileInfo) (chunk, error) {
 		return chunk, &ReadError{err}
 	}
 	defer mfile.Close()
-	prior := int32(-1)
+	priorEnd := int32(-1)
 	if err := binary.Read(mfile, binary.LittleEndian, &chunk.oldest); err != nil {
 		return chunk, ErrCorrupt
 	}
@@ -267,11 +272,22 @@ func openChunkFile(basedir string, fi os.FileInfo) (chunk, error) {
 			}
 			return chunk, ErrCorrupt
 		}
-		if this <= prior {
+		if this <= priorEnd {
 			return chunk, ErrCorrupt
 		}
 		chunk.ends = append(chunk.ends, this)
-		prior = this
+		priorEnd = this
+	}
+
+	// Normally a chunk contains at least one entry. This is only
+	// false for newly-created chunks.
+	if len(chunk.ends) == 0 && !allowEmpty {
+		return chunk, ErrCorrupt
+	}
+
+	// Chunk oldest/next IDs must match: there can be no gaps!
+	if priorChunk != nil && chunk.oldest != priorChunk.next {
+		return chunk, ErrCorrupt
 	}
 
 	chunk.next = chunk.oldest + uint64(len(chunk.ends))
@@ -383,11 +399,19 @@ func (db *chunkSliceDB) newChunk() error {
 	if err != nil {
 		return err
 	}
-	c, err := openChunkFile(db.path, fi)
+	var prior *chunk
+	if len(db.chunks) > 0 {
+		prior = db.chunks[len(db.chunks)-1]
+	}
+	c, err := openChunkFile(db.path, fi, prior, true)
 	if err != nil {
 		return err
 	}
 	db.chunks = append(db.chunks, &c)
+
+	// Force a full metadata write when this chunk is first
+	// synced.
+	c.rollback = true
 
 	return nil
 }
@@ -463,6 +487,7 @@ func (db *chunkSliceDB) truncate(newOldestID, newNewestID uint64) error {
 			c.ends = c.ends[0 : uint64(len(c.ends))-(c.next-newNextID)]
 		}
 		db.syncDirty[c] = struct{}{}
+		c.rollback = true
 	}
 
 	db.sinceLastSync += newOldestID - db.oldest
@@ -545,18 +570,35 @@ func (db *chunkSliceDB) sync(acquireLock bool) error {
 			return &SyncError{err}
 		}
 
+		// If there was a rollback which affected this chunk,
+		// rewrite all the metadata. Otherwise only write the
+		// new end points.
 		metaBuf := new(bytes.Buffer)
-		if err := binary.Write(metaBuf, binary.LittleEndian, c.oldest); err != nil {
-			return err
-		}
-		for _, end := range c.ends {
-			if err := binary.Write(metaBuf, binary.LittleEndian, end); err != nil {
+		if c.rollback {
+			if err := binary.Write(metaBuf, binary.LittleEndian, c.oldest); err != nil {
 				return err
 			}
+			for _, end := range c.ends {
+				if err := binary.Write(metaBuf, binary.LittleEndian, end); err != nil {
+					return err
+				}
+			}
+			if err := writeFile(metaFilePath(c), metaBuf.Bytes()); err != nil {
+				return &SyncError{err}
+			}
+		} else {
+			for i := c.newFrom; i < len(c.ends); i++ {
+				if err := binary.Write(metaBuf, binary.LittleEndian, c.ends[i]); err != nil {
+					return err
+				}
+			}
+			if err := appendFile(metaFilePath(c), metaBuf.Bytes()); err != nil {
+				return &SyncError{err}
+			}
 		}
-		if err := writeFile(metaFilePath(c), metaBuf.Bytes()); err != nil {
-			return &SyncError{err}
-		}
+
+		c.rollback = false
+		c.newFrom = len(c.ends)
 	}
 	db.syncDirty = make(map[*chunk]struct{})
 
