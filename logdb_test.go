@@ -231,7 +231,7 @@ func TestNoOpenBadFiles(t *testing.T) {
 
 /// ASSERTIONS
 
-func assertCreate(t *testing.T, testName string, cSize uint32) LogDB {
+func assertCreate(t *testing.T, testName string, cSize uint32) *LogDB {
 	_ = os.RemoveAll("test_db/" + testName)
 	db, err := Open("test_db/"+testName, cSize, true)
 	if err != nil {
@@ -248,7 +248,7 @@ func assertCreateError(t *testing.T, testName string) error {
 	return err
 }
 
-func assertOpen(t *testing.T, testName string) LogDB {
+func assertOpen(t *testing.T, testName string) *LogDB {
 	db, err := Open("test_db/"+testName, 0, false)
 	if err != nil {
 		t.Fatal(err)
@@ -264,25 +264,25 @@ func assertOpenError(t *testing.T, testName string) error {
 	return err
 }
 
-func assertClose(t *testing.T, db LogDB) {
+func assertClose(t *testing.T, db *LogDB) {
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func assertAppend(t *testing.T, db LogDB, entry []byte) {
+func assertAppend(t *testing.T, db *LogDB, entry []byte) {
 	if err := db.Append(entry); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func assertAppendEntries(t *testing.T, db LogDB, entries [][]byte) {
+func assertAppendEntries(t *testing.T, db *LogDB, entries [][]byte) {
 	if err := db.AppendEntries(entries); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func assertGet(t *testing.T, db LogDB, id uint64) []byte {
+func assertGet(t *testing.T, db *LogDB, id uint64) []byte {
 	b, err := db.Get(id)
 	if err != nil {
 		t.Fatal(err)
@@ -290,19 +290,19 @@ func assertGet(t *testing.T, db LogDB, id uint64) []byte {
 	return b
 }
 
-func assertForget(t *testing.T, db LogDB, newOldestID uint64) {
+func assertForget(t *testing.T, db *LogDB, newOldestID uint64) {
 	if err := db.Forget(newOldestID); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func assertRollback(t *testing.T, db LogDB, newNewestID uint64) {
+func assertRollback(t *testing.T, db *LogDB, newNewestID uint64) {
 	if err := db.Rollback(newNewestID); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func assertTruncate(t *testing.T, db LogDB, newOldestID, newNewestID uint64) {
+func assertTruncate(t *testing.T, db *LogDB, newOldestID, newNewestID uint64) {
 	if err := db.Truncate(newOldestID, newNewestID); err != nil {
 		t.Fatal(err)
 	}
@@ -310,7 +310,7 @@ func assertTruncate(t *testing.T, db LogDB, newOldestID, newNewestID uint64) {
 
 /// HELPERS
 
-func filldb(t *testing.T, db LogDB, num int) [][]byte {
+func filldb(t *testing.T, db *LogDB, num int) [][]byte {
 	vs := make([][]byte, num)
 	for i := 0; i < num; i++ {
 		vs[i] = []byte(fmt.Sprintf("entry-%v", i))

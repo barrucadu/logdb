@@ -15,13 +15,13 @@ import (
 // LogStore is implements the hashicorp/raft 'LogStore' interface,
 // with the backing store being a 'LogDB'.
 type LogStore struct {
-	Store  logdb.LogDB
+	Store  *logdb.LogDB
 	handle codec.Handle
 }
 
 // New creates a 'LogStore' backed by the given 'LogDB'. Log entries
 // are encoded with messagepack.
-func New(store logdb.LogDB) *LogStore {
+func New(store *logdb.LogDB) *LogStore {
 	return &LogStore{Store: store}
 }
 
