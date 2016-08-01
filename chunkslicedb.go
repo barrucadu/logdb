@@ -285,7 +285,7 @@ func openChunkFile(basedir string, fi os.FileInfo, priorChunk *chunk, chunkSize 
 			}
 			return chunk, &FormatError{
 				FilePath: metaFilePath(chunk),
-				Err:      errwrap.Wrapf("unexpected non-EOF error reading chunk metadata: {{err}}", err),
+				Err:      errwrap.Wrapf("unexpected error reading chunk metadata: {{err}}", err),
 			}
 		}
 		if this <= priorEnd {
