@@ -374,6 +374,14 @@ func opendb(path string) (*LogDB, error) {
 		empty = len(c.ends) == 0
 	}
 
+	// If the oldest entry according to the metadata is older than
+	// the oldest entry we actually have, bump it up to the newer
+	// one. This could happen if a chunk is forgotten and then the
+	// program crashes before the "oldest" file gets rewritten.
+	if len(chunks) > 0 && oldest < chunks[0].oldest {
+		oldest = chunks[0].oldest
+	}
+
 	return &LogDB{
 		path:      path,
 		lockfile:  lockfile,
