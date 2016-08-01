@@ -104,7 +104,7 @@ func (db *LogDB) AppendEntries(entries [][]byte) error {
 		}
 	}
 
-	return db.periodicSync(false)
+	return db.periodicSync()
 }
 
 // Get looks up an entry by ID.
@@ -196,14 +196,18 @@ func (db *LogDB) SetSync(every int) error {
 	db.syncEvery = every
 
 	// Immediately perform a periodic sync.
-	return db.periodicSync(true)
+	db.rwlock.RLock()
+	defer db.rwlock.RUnlock()
+	return db.periodicSync()
 }
 
 // Sync writes the data to disk now.
 //
 // May return a SyncError value.
 func (db *LogDB) Sync() error {
-	return db.sync(true)
+	db.rwlock.RLock()
+	defer db.rwlock.RUnlock()
+	return db.sync()
 }
 
 // OldestID gets the ID of the oldest log entry.
@@ -229,7 +233,7 @@ func (db *LogDB) Close() error {
 	defer db.rwlock.Unlock()
 
 	// First sync everything
-	err := db.sync(false)
+	err := db.sync()
 
 	// Then close the open files
 	for _, c := range db.chunks {
@@ -510,35 +514,27 @@ func (db *LogDB) truncate(newOldestID, newNewestID uint64) error {
 		}
 		// Then sync the db, including writing out the new
 		// oldest ID.
-		if err := db.sync(false); err != nil {
+		if err := db.sync(); err != nil {
 			return err
 		}
 		db.chunks = db.chunks[first:last]
 	}
-	return db.periodicSync(false)
+	return db.periodicSync()
 }
 
-// Perform a sync only if needed. This function is not safe to execute
-// concurrently with a write, so the 'acquireLock' parameter MUST be
-// true UNLESS the write lock is already held by this thread.
-func (db *LogDB) periodicSync(acquireLock bool) error {
+// Perform a sync only if needed. Assumes a lock (read or write) is
+// held.
+func (db *LogDB) periodicSync() error {
 	// Sync if the number of unsynced entries is above the
 	// threshold
 	if db.syncEvery >= 0 && db.sinceLastSync > uint64(db.syncEvery) {
-		return db.sync(acquireLock)
+		return db.sync()
 	}
 	return nil
 }
 
-// This function is not safe to execute concurrently with a write, so
-// the 'acquireLock' parameter MUST be true UNLESS the write lock is
-// already held by this thread.
-func (db *LogDB) sync(acquireLock bool) error {
-	if acquireLock {
-		db.rwlock.RLock()
-		defer db.rwlock.RUnlock()
-	}
-
+// Perform a sync immediately. Assumes a lock (read or write) is held.
+func (db *LogDB) sync() error {
 	for c, _ := range db.syncDirty {
 		if c.delete {
 			if err := c.closeAndRemove(); err != nil {
