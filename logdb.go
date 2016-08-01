@@ -26,9 +26,6 @@ var (
 	// not exist and the 'create' flag was false.
 	ErrPathDoesntExist = errors.New("database directory does not exist")
 
-	// ErrCorrupt means that the database files are invalid.
-	ErrCorrupt = errors.New("database corrupted")
-
 	// ErrTooBig means that an entry could not be appended because
 	// it is larger than the chunk size.
 	ErrTooBig = errors.New("entry larger than chunksize")
@@ -90,6 +87,21 @@ func (e *AtomicityError) Error() string {
 
 func (e *AtomicityError) WrappedErrors() []error {
 	return []error{e.AppendErr, e.RollbackErr}
+}
+
+// FormatError means that there is a problem with the database files.
+// It wraps the actual error.
+type FormatError struct {
+	FilePath string
+	Err      error
+}
+
+func (e *FormatError) Error() string {
+	return fmt.Sprintf("error reading file %s: %s", e.FilePath, e.Err.Error())
+}
+
+func (e *FormatError) WrappedErrors() []error {
+	return []error{e.Err}
 }
 
 // A LogDB is a reference to an efficient log-structured database

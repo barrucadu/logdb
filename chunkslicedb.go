@@ -3,6 +3,7 @@ package logdb
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"io"
 	"io/ioutil"
 	"os"
@@ -10,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/hashicorp/errwrap"
 )
 
 // chunkSliceDB is the main LogDB instance, representing a database as
@@ -263,7 +266,10 @@ func openChunkFile(basedir string, fi os.FileInfo, priorChunk *chunk, allowEmpty
 	defer mfile.Close()
 	priorEnd := int32(-1)
 	if err := binary.Read(mfile, binary.LittleEndian, &chunk.oldest); err != nil {
-		return chunk, ErrCorrupt
+		return chunk, &FormatError{
+			FilePath: metaFilePath(chunk),
+			Err:      errwrap.Wrapf("could not decode chunk oldest id: {{err}}", err),
+		}
 	}
 	for {
 		var this int32
@@ -271,10 +277,16 @@ func openChunkFile(basedir string, fi os.FileInfo, priorChunk *chunk, allowEmpty
 			if err == io.EOF {
 				break
 			}
-			return chunk, ErrCorrupt
+			return chunk, &FormatError{
+				FilePath: metaFilePath(chunk),
+				Err:      errwrap.Wrapf("unexpected non-EOF error reading chunk metadata: {{err}}", err),
+			}
 		}
 		if this <= priorEnd {
-			return chunk, ErrCorrupt
+			return chunk, &FormatError{
+				FilePath: metaFilePath(chunk),
+				Err:      errors.New("entry ending positions are not strictly increasing"),
+			}
 		}
 		chunk.ends = append(chunk.ends, this)
 		priorEnd = this
@@ -283,12 +295,18 @@ func openChunkFile(basedir string, fi os.FileInfo, priorChunk *chunk, allowEmpty
 	// Normally a chunk contains at least one entry. This is only
 	// false for newly-created chunks.
 	if len(chunk.ends) == 0 && !allowEmpty {
-		return chunk, ErrCorrupt
+		return chunk, &FormatError{
+			FilePath: metaFilePath(chunk),
+			Err:      errors.New("metadata contains no entries"),
+		}
 	}
 
 	// Chunk oldest/next IDs must match: there can be no gaps!
 	if priorChunk != nil && chunk.oldest != priorChunk.next {
-		return chunk, ErrCorrupt
+		return chunk, &FormatError{
+			FilePath: metaFilePath(chunk),
+			Err:      errors.New("discontinuity in entry IDs"),
+		}
 	}
 
 	chunk.next = chunk.oldest + uint64(len(chunk.ends))
