@@ -225,7 +225,7 @@ func openChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
 	next := uint64(1)
 	var prior *chunk
 	for i, fi := range chunkFiles {
-		c, err := openChunkFile(path, fi, prior, false)
+		c, err := openChunkFile(path, fi, prior, chunkSize, false)
 		if err != nil {
 			return nil, err
 		}
@@ -247,13 +247,19 @@ func openChunkSliceDB(path string, chunkSize uint32) (*chunkSliceDB, error) {
 }
 
 // Open a chunk file
-func openChunkFile(basedir string, fi os.FileInfo, priorChunk *chunk, allowEmpty bool) (chunk, error) {
+func openChunkFile(basedir string, fi os.FileInfo, priorChunk *chunk, chunkSize uint32, allowEmpty bool) (chunk, error) {
 	chunk := chunk{path: basedir + "/" + fi.Name()}
 
 	// mmap the data file
 	mmapf, bytes, err := mmap(chunk.path)
 	if err != nil {
 		return chunk, &ReadError{err}
+	}
+	if uint32(len(bytes)) != chunkSize {
+		return chunk, &FormatError{
+			FilePath: chunk.path,
+			Err:      errors.New("incorrect file size"),
+		}
 	}
 	chunk.bytes = bytes
 	chunk.mmapf = mmapf
@@ -432,7 +438,7 @@ func (db *chunkSliceDB) newChunk() error {
 	if len(db.chunks) > 0 {
 		prior = db.chunks[len(db.chunks)-1]
 	}
-	c, err := openChunkFile(db.path, fi, prior, true)
+	c, err := openChunkFile(db.path, fi, prior, db.chunkSize, true)
 	if err != nil {
 		return err
 	}
