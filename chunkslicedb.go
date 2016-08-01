@@ -65,6 +65,7 @@ type chunk struct {
 
 	newFrom  int
 	rollback bool
+	delete   bool
 }
 
 // Delete the files associated with a chunk.
@@ -514,18 +515,12 @@ func (db *chunkSliceDB) truncate(newOldestID, newNewestID uint64) error {
 	}
 
 	if first > 0 || last < len(db.chunks) {
-		// Delete the chunk files.
+		// Mark the chunks for deletion.
 		for i := last; i < len(db.chunks); i++ {
-			delete(db.syncDirty, db.chunks[i])
-			if err := db.chunks[i].closeAndRemove(); err != nil {
-				return &DeleteError{err}
-			}
+			db.chunks[i].delete = true
 		}
 		for i := 0; i < first; i++ {
-			delete(db.syncDirty, db.chunks[i])
-			if err := db.chunks[i].closeAndRemove(); err != nil {
-				return &DeleteError{err}
-			}
+			db.chunks[i].delete = true
 		}
 		// Then sync the db, including writing out the new
 		// oldest ID.
@@ -570,7 +565,11 @@ func (db *chunkSliceDB) sync(acquireLock bool) error {
 	}
 
 	for c, _ := range db.syncDirty {
-		if err := c.sync(); err != nil {
+		if c.delete {
+			if err := c.closeAndRemove(); err != nil {
+				return &SyncError{&DeleteError{err}}
+			}
+		} else if err := c.sync(); err != nil {
 			return &SyncError{err}
 		}
 	}
