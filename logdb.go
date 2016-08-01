@@ -4,6 +4,7 @@
 package logdb
 
 import (
+	"errors"
 	"io/ioutil"
 	"os"
 	"sort"
@@ -350,14 +351,27 @@ func opendb(path string) (*LogDB, error) {
 	chunks := make([]*chunk, len(chunkFiles))
 	next := uint64(1)
 	var prior *chunk
+	var empty bool
 	for i, fi := range chunkFiles {
-		c, err := openChunkFile(path, fi, prior, chunkSize, false)
+		// Normally a chunk contains at least one entry. This
+		// may only false for the final chunk. So if we have a
+		// chunk file to process and the 'empty' flag is set,
+		// then we have an error.
+		if empty {
+			return nil, &FormatError{
+				FilePath: metaFilePath(prior),
+				Err:      errors.New("metadata of non-final chunk contains no entries"),
+			}
+		}
+
+		c, err := openChunkFile(path, fi, prior, chunkSize)
 		if err != nil {
 			return nil, err
 		}
 		chunks[i] = &c
 		prior = &c
 		next = c.next
+		empty = len(c.ends) == 0
 	}
 
 	return &LogDB{
@@ -454,7 +468,7 @@ func (db *LogDB) newChunk() error {
 	if len(db.chunks) > 0 {
 		prior = db.chunks[len(db.chunks)-1]
 	}
-	c, err := openChunkFile(db.path, fi, prior, db.chunkSize, true)
+	c, err := openChunkFile(db.path, fi, prior, db.chunkSize)
 	if err != nil {
 		return err
 	}

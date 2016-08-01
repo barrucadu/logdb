@@ -136,7 +136,7 @@ func createChunkFiles(dataFilePath string, chunkSize uint32, oldest uint64) erro
 }
 
 // Open a chunk file
-func openChunkFile(basedir string, fi os.FileInfo, priorChunk *chunk, chunkSize uint32, allowEmpty bool) (chunk, error) {
+func openChunkFile(basedir string, fi os.FileInfo, priorChunk *chunk, chunkSize uint32) (chunk, error) {
 	chunk := chunk{path: basedir + "/" + fi.Name()}
 
 	// mmap the data file
@@ -185,15 +185,6 @@ func openChunkFile(basedir string, fi os.FileInfo, priorChunk *chunk, chunkSize 
 		}
 		chunk.ends = append(chunk.ends, this)
 		priorEnd = this
-	}
-
-	// Normally a chunk contains at least one entry. This is only
-	// false for newly-created chunks.
-	if len(chunk.ends) == 0 && !allowEmpty {
-		return chunk, &FormatError{
-			FilePath: metaFilePath(chunk),
-			Err:      errors.New("metadata contains no entries"),
-		}
 	}
 
 	// Chunk oldest/next IDs must match: there can be no gaps!
