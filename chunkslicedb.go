@@ -322,11 +322,14 @@ func (db *chunkSliceDB) append(entry []byte) error {
 		return ErrTooBig
 	}
 
+	isNewChunk := false
+
 	// If there are no chunks, create a new one.
 	if len(db.chunks) == 0 {
 		if err := db.newChunk(); err != nil {
 			return &WriteError{err}
 		}
+		isNewChunk = true
 	}
 
 	lastChunk := db.chunks[len(db.chunks)-1]
@@ -340,6 +343,7 @@ func (db *chunkSliceDB) append(entry []byte) error {
 				return &WriteError{err}
 			}
 			lastChunk = db.chunks[len(db.chunks)-1]
+			isNewChunk = true
 		}
 	}
 
@@ -364,9 +368,15 @@ func (db *chunkSliceDB) append(entry []byte) error {
 		lastChunk.oldest = 1
 	}
 
-	// Mark the current chunk as dirty.
-	db.sinceLastSync++
-	db.syncDirty[lastChunk] = struct{}{}
+	// Mark the current chunk as dirty, unless it's a new chunk:
+	// in which case sync it immediately (to avoid an empty chunk
+	// on disk)
+	if isNewChunk {
+		lastChunk.sync()
+	} else {
+		db.sinceLastSync++
+		db.syncDirty[lastChunk] = struct{}{}
+	}
 	return nil
 }
 
