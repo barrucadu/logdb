@@ -31,6 +31,13 @@ type LogDB struct {
 	// under some work loads.
 	rwlock sync.RWMutex
 
+	// Concurrent syncing/reading is safe, but syncing/writing and
+	// syncing/syncing is not. To prevent the first, syncing
+	// claims a read lock. To prevent the latter, a special sync
+	// lock is used. Claiming a write lock would also work, but is
+	// far more heavyweight.
+	slock sync.Mutex
+
 	chunkSize uint32
 
 	chunks []*chunk
@@ -535,6 +542,9 @@ func (db *LogDB) periodicSync() error {
 
 // Perform a sync immediately. Assumes a lock (read or write) is held.
 func (db *LogDB) sync() error {
+	db.slock.Lock()
+	defer db.slock.Unlock()
+
 	for c, _ := range db.syncDirty {
 		if c.delete {
 			if err := c.closeAndRemove(); err != nil {
