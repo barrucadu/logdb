@@ -177,10 +177,10 @@ func openChunkFile(basedir string, fi os.FileInfo, priorChunk *chunk, chunkSize 
 				Err:      errwrap.Wrapf("unexpected error reading chunk metadata: {{err}}", err),
 			}
 		}
-		if this <= priorEnd {
+		if this < priorEnd {
 			return chunk, &FormatError{
 				FilePath: metaFilePath(chunk),
-				Err:      errors.New("entry ending positions are not strictly increasing"),
+				Err:      errors.New("entry ending positions are not monotonically increasing"),
 			}
 		}
 		chunk.ends = append(chunk.ends, this)
