@@ -1,10 +1,13 @@
 package logdb
 
-import "os"
+import (
+	"os"
+	"strings"
+)
 
 /// Slices with nice sorting properties.
 
-// Lexicographic sorting by filename.
+// Lexicographic sorting by filename split into 'sep'-delimited segments.
 type fileInfoSlice []os.FileInfo
 
 func (fis fileInfoSlice) Len() int {
@@ -16,13 +19,24 @@ func (fis fileInfoSlice) Swap(i, j int) {
 }
 
 func (fis fileInfoSlice) Less(i, j int) bool {
-	ni := fis[i].Name()
-	nj := fis[j].Name()
+	bitsI := strings.Split(fis[i].Name(), sep)
+	bitsJ := strings.Split(fis[j].Name(), sep)
 
-	if len(ni) == len(nj) {
-		return ni < nj
+	max := len(bitsI)
+	if len(bitsJ) > max {
+		max = len(bitsJ)
 	}
-	return len(ni) < len(nj)
+
+	for i := 0; i < max; i++ {
+		if i >= len(bitsI) {
+			break
+		} else if i > len(bitsJ) {
+			break
+		} else if lessLexico(bitsI[i], bitsJ[i]) {
+			return true
+		}
+	}
+	return len(bitsI) < len(bitsJ)
 }
 
 // Lexicographic sorting by data file path.
@@ -37,11 +51,13 @@ func (cs chunkSlice) Swap(i, j int) {
 }
 
 func (cs chunkSlice) Less(i, j int) bool {
-	ni := cs[i].path
-	nj := cs[j].path
+	return lessLexico(cs[i].path, cs[j].path)
+}
 
-	if len(ni) == len(nj) {
-		return ni < nj
+// Compare two strings lexicographically.
+func lessLexico(a, b string) bool {
+	if len(a) == len(b) {
+		return a < b
 	}
-	return len(ni) < len(nj)
+	return len(a) < len(b)
 }

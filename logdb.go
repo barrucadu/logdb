@@ -458,7 +458,7 @@ func (db *LogDB) newChunk() error {
 
 	// Filename is "chunk-<1 + last chunk file name>"
 	if len(db.chunks) > 0 {
-		chunkFile = db.path + "/" + db.chunks[len(db.chunks)-1].nextDataFileName()
+		chunkFile = db.path + "/" + db.chunks[len(db.chunks)-1].nextDataFileName(db.next)
 	}
 
 	// Create the files for a new chunk.

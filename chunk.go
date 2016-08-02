@@ -47,23 +47,26 @@ func (c *chunk) closeAndRemove() error {
 }
 
 const (
-	chunkPrefix      = "chunk_"
-	metaSuffix       = "_meta"
-	initialChunkFile = chunkPrefix + "0"
+	chunkPrefix      = "chunk"
+	metaSuffix       = "meta"
+	sep              = "_"
+	initialChunkFile = chunkPrefix + sep + "0" + sep + "1"
 )
 
 // Get the meta file path associated with a chunk file path.
 func metaFilePath(chunkFilePath interface{}) string {
+	var path string
 	switch cfg := chunkFilePath.(type) {
 	case chunk:
-		return cfg.path + metaSuffix
+		path = cfg.path
 	case *chunk:
-		return cfg.path + metaSuffix
+		path = cfg.path
 	case string:
-		return cfg + metaSuffix
+		path = cfg
 	default:
 		panic("internal error: bad type in metaFilePath")
 	}
+	return path + sep + metaSuffix
 }
 
 // Check if a file is a chunk data file.
@@ -71,14 +74,25 @@ func metaFilePath(chunkFilePath interface{}) string {
 // A valid chunk filename consists of the chunkPrefix followed by one
 // or more digits, with no leading zeroes.
 func isChunkDataFile(fi os.FileInfo) bool {
-	bits := strings.Split(fi.Name(), chunkPrefix)
+	bits := strings.Split(fi.Name(), chunkPrefix+sep)
 	// In the form chunkPrefix[.+]
 	if len(bits) != 2 || len(bits[0]) != 0 || len(bits[1]) == 0 {
 		return false
 	}
 
+	bits = strings.Split(bits[1], sep)
+
+	if len(bits) != 2 {
+		return false
+	}
+
+	// Must be [.+]_[0-9]+
+	if _, err := strconv.Atoi(bits[1]); err != nil {
+		return false
+	}
+
 	// Special case: '0' is allowed, even though that has a leading zero.
-	if bits[1] == "0" {
+	if bits[0] == "0" {
 		return true
 	}
 
@@ -103,18 +117,23 @@ func isChunkDataFile(fi os.FileInfo) bool {
 //
 // This function panics if the chunk path is invalid. This should
 // never happen unless openChunkSliceDB or isChunkDataFile is broken.
-func (c *chunk) nextDataFileName() string {
-	bits := strings.Split(c.path, "/"+chunkPrefix)
+func (c *chunk) nextDataFileName(oldest uint64) string {
+	bits := strings.Split(c.path, "/"+chunkPrefix+sep)
 	if len(bits) < 2 {
 		panic("malformed chunk file name: " + c.path)
 	}
 
-	num, err := strconv.Atoi(bits[len(bits)-1])
+	bits = strings.Split(bits[len(bits)-1], sep)
+	if len(bits) != 2 {
+		panic("malformed chunk file name: " + c.path)
+	}
+
+	num, err := strconv.Atoi(bits[0])
 	if err != nil {
 		panic("malformed chunk file name: " + c.path)
 	}
 
-	return chunkPrefix + strconv.Itoa(num+1)
+	return fmt.Sprintf("%s%s%v%s%v", chunkPrefix, sep, num+1, sep, oldest)
 }
 
 // Create the files for a new chunk. As an empty chunk is not allowed,
