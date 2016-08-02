@@ -191,7 +191,7 @@ func openChunkFile(basedir string, fi os.FileInfo, priorChunk *chunk, chunkSize 
 	if priorChunk != nil && chunk.oldest != priorChunk.next {
 		return chunk, &FormatError{
 			FilePath: metaFilePath(chunk),
-			Err:      fmt.Errorf("discontinuity in entry IDs (expected %v got %v)", chunk.oldest, priorChunk.next),
+			Err:      fmt.Errorf("discontinuity in entry IDs (expected %v got %v)", priorChunk.next, chunk.oldest),
 		}
 	}
 
