@@ -456,7 +456,7 @@ func (db *LogDB) append(entry []byte) error {
 func (db *LogDB) newChunk() error {
 	chunkFile := db.path + "/" + initialChunkFile
 
-	// Filename is "chunk-<1 + last chunk file name>"
+	// Filename is "chunk-<1 + last chunk file name>_<next id>"
 	if len(db.chunks) > 0 {
 		chunkFile = db.path + "/" + db.chunks[len(db.chunks)-1].nextDataFileName(db.next)
 	}

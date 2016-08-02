@@ -143,20 +143,24 @@ func createChunkFiles(dataFilePath string, chunkSize uint32, oldest uint64) erro
 	if err := createFile(dataFilePath, chunkSize); err != nil {
 		return err
 	}
-	metaBuf := new(bytes.Buffer)
-	if err := binary.Write(metaBuf, binary.LittleEndian, oldest); err != nil {
-		return err
-	}
-	if err := writeFile(metaFilePath(dataFilePath), metaBuf.Bytes()); err != nil {
-		return err
-	}
-
-	return nil
+	file, err := os.OpenFile(metaFilePath(dataFilePath), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+	file.Close()
+	return err
 }
 
 // Open a chunk file
 func openChunkFile(basedir string, fi os.FileInfo, priorChunk *chunk, chunkSize uint32) (chunk, error) {
 	chunk := chunk{path: basedir + "/" + fi.Name()}
+	// Get the oldest ID from the file name
+	nameBits := strings.Split(fi.Name(), sep)
+	if len(nameBits) != 3 {
+		return chunk, fmt.Errorf("invalid chunk data file name: %s", fi.Name())
+	}
+	oldnum, err := strconv.Atoi(nameBits[2])
+	if err != nil {
+		return chunk, fmt.Errorf("invalid chunk data file name: %s", fi.Name())
+	}
+	chunk.oldest = uint64(oldnum)
 
 	// mmap the data file
 	mmapf, bytes, err := mmap(chunk.path)
@@ -179,12 +183,6 @@ func openChunkFile(basedir string, fi os.FileInfo, priorChunk *chunk, chunkSize 
 	}
 	defer mfile.Close()
 	priorEnd := int32(-1)
-	if err := binary.Read(mfile, binary.LittleEndian, &chunk.oldest); err != nil {
-		return chunk, &FormatError{
-			FilePath: metaFilePath(chunk),
-			Err:      errwrap.Wrapf("could not decode chunk oldest id: {{err}}", err),
-		}
-	}
 	for {
 		var this int32
 		if err := binary.Read(mfile, binary.LittleEndian, &this); err != nil {
@@ -233,9 +231,6 @@ func (c *chunk) sync() error {
 	// all the metadata. Otherwise only write the new end points.
 	metaBuf := new(bytes.Buffer)
 	if c.rollback {
-		if err := binary.Write(metaBuf, binary.LittleEndian, c.oldest); err != nil {
-			return err
-		}
 		for _, end := range c.ends {
 			if err := binary.Write(metaBuf, binary.LittleEndian, end); err != nil {
 				return err
