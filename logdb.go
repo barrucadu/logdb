@@ -482,10 +482,6 @@ func (db *LogDB) newChunk() error {
 	}
 	db.chunks = append(db.chunks, &c)
 
-	// Force a full metadata write when this chunk is first
-	// synced.
-	c.rollback = true
-
 	return nil
 }
 
@@ -507,7 +503,6 @@ func (db *LogDB) truncate(newOldestID, newNewestID uint64) error {
 			c.ends = c.ends[0 : uint64(len(c.ends))-(c.next-newNextID)]
 		}
 		db.syncDirty[c] = struct{}{}
-		c.rollback = true
 	}
 
 	db.sinceLastSync += newOldestID - db.oldest

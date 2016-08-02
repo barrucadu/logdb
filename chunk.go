@@ -1,7 +1,6 @@
 package logdb
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -33,9 +32,8 @@ type chunk struct {
 
 	next uint64
 
-	newFrom  int
-	rollback bool
-	delete   bool
+	newFrom int
+	delete  bool
 }
 
 // Delete the files associated with a chunk.
@@ -227,30 +225,12 @@ func (c *chunk) sync() error {
 		return err
 	}
 
-	// If there was a rollback which affected this chunk, rewrite
-	// all the metadata. Otherwise only write the new end points.
-	metaBuf := new(bytes.Buffer)
-	if c.rollback {
-		for _, end := range c.ends {
-			if err := binary.Write(metaBuf, binary.LittleEndian, end); err != nil {
-				return err
-			}
-		}
-		if err := writeFile(metaFilePath(c), metaBuf.Bytes()); err != nil {
-			return err
-		}
-	} else {
-		for i := c.newFrom; i < len(c.ends); i++ {
-			if err := binary.Write(metaBuf, binary.LittleEndian, c.ends[i]); err != nil {
-				return err
-			}
-		}
-		if err := appendFile(metaFilePath(c), metaBuf.Bytes()); err != nil {
+	// Write the new end points.
+	for i := c.newFrom; i < len(c.ends); i++ {
+		if err := appendFile(metaFilePath(c), c.ends[i]); err != nil {
 			return err
 		}
 	}
-
-	c.rollback = false
 	c.newFrom = len(c.ends)
 
 	return nil
