@@ -28,7 +28,7 @@ func TestStoreLog(t *testing.T) {
 	logs := make([]*raft.Log, numEntries)
 	for i := 0; i < len(logs); i++ {
 		logs[i] = &raft.Log{
-			Index: uint64(i) + 1,
+			Index: uint64(i),
 			Term:  0,
 			Type:  raft.LogType(i),
 			Data:  []byte(fmt.Sprintf("log entry %v", i)),
@@ -55,7 +55,7 @@ func TestStoreLogs(t *testing.T) {
 	logs := make([]*raft.Log, numEntries)
 	for i := 0; i < len(logs); i++ {
 		logs[i] = &raft.Log{
-			Index: uint64(i) + 1,
+			Index: uint64(i),
 			Term:  0,
 			Type:  raft.LogType(i),
 			Data:  []byte(fmt.Sprintf("log entry %v", i)),
@@ -188,7 +188,7 @@ func filldb(t testing.TB, db *LogStore) []*raft.Log {
 	logs := make([]*raft.Log, numEntries)
 	for i := 0; i < len(logs); i++ {
 		logs[i] = &raft.Log{
-			Index: uint64(i) + 1,
+			Index: uint64(i),
 			Term:  0,
 			Type:  raft.LogType(i),
 			Data:  []byte(fmt.Sprintf("log entry %v", i)),
