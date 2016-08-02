@@ -5,6 +5,7 @@ package raft
 
 import (
 	"bytes"
+	"fmt"
 
 	"github.com/barrucadu/logdb"
 
@@ -46,6 +47,10 @@ func (l *LogStore) GetLog(index uint64, log *raft.Log) error {
 
 // StoreLog stores a log entry.
 func (l *LogStore) StoreLog(log *raft.Log) error {
+	last, _ := l.LastIndex()
+	if log.Index != last+1 {
+		return fmt.Errorf("non-contiguous log IDs (expected %v, given %v)", last+1, log.Index)
+	}
 	bs, err := l.encode(log)
 	if err != nil {
 		return err
@@ -56,8 +61,13 @@ func (l *LogStore) StoreLog(log *raft.Log) error {
 // StoreLogs stores multiple log entries.
 func (l *LogStore) StoreLogs(logs []*raft.Log) error {
 	var err error
+	last, _ := l.LastIndex()
 	bss := make([][]byte, len(logs))
 	for i, log := range logs {
+		if log.Index != last+1 {
+			return fmt.Errorf("non-contiguous log IDs (expected %v, given %v)", last+1, log.Index)
+		}
+		last = log.Index
 		bss[i], err = l.encode(log)
 		if err != nil {
 			return err
