@@ -3,7 +3,7 @@ package logdb
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
+	"fmt"
 	"io"
 	"os"
 	"strconv"
@@ -147,7 +147,7 @@ func openChunkFile(basedir string, fi os.FileInfo, priorChunk *chunk, chunkSize 
 	if uint32(len(bytes)) != chunkSize {
 		return chunk, &FormatError{
 			FilePath: chunk.path,
-			Err:      errors.New("incorrect file size"),
+			Err:      fmt.Errorf("incorrect file size (expected %v got %v)", chunkSize, uint32(len(bytes))),
 		}
 	}
 	chunk.bytes = bytes
@@ -180,7 +180,7 @@ func openChunkFile(basedir string, fi os.FileInfo, priorChunk *chunk, chunkSize 
 		if this < priorEnd {
 			return chunk, &FormatError{
 				FilePath: metaFilePath(chunk),
-				Err:      errors.New("entry ending positions are not monotonically increasing"),
+				Err:      fmt.Errorf("entry ending positions are not monotonically increasing (prior %v got %v)", priorEnd, this),
 			}
 		}
 		chunk.ends = append(chunk.ends, this)
@@ -191,7 +191,7 @@ func openChunkFile(basedir string, fi os.FileInfo, priorChunk *chunk, chunkSize 
 	if priorChunk != nil && chunk.oldest != priorChunk.next {
 		return chunk, &FormatError{
 			FilePath: metaFilePath(chunk),
-			Err:      errors.New("discontinuity in entry IDs"),
+			Err:      fmt.Errorf("discontinuity in entry IDs (expected %v got %v)", chunk.oldest, priorChunk.next),
 		}
 	}
 
