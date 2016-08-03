@@ -1,6 +1,7 @@
 package logdb
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -194,23 +195,29 @@ func openChunkFile(basedir string, fi os.FileInfo, priorChunk *chunk, chunkSize 
 
 // Write a chunk to disk.
 func (c *chunk) sync() error {
-	// To ensure ACID, sync the data first and only then the
-	// metadata. This means that if there is a failure between the
-	// two syncs, even if the newly-written data is corrupt, there
-	// will be no metadata referring to it, and so it will be
-	// invisible to the database when next opened.
+	// To ensure ACID, sync the data first and only then the metadata. This means that if there is a failure
+	// between the two syncs, even if the newly-written data is corrupt, there will be no metadata referring
+	// to it, and so it will be invisible to the database when next opened.
 	if err := fsync(c.mmapf); err != nil {
 		return err
 	}
 
-	// Write the new end points.
+	// Construct the metadata as a buffer. This is done rather than appending to the output file directly
+	// because individual "write" syscalls with a small enough buffer (which this will be for any reasonable
+	// syncing period) are atomic. Multiple appends would have the possibility of failure in the middle.
+	buf := new(bytes.Buffer)
 	for i := c.newFrom; i < len(c.ends); i++ {
-		if err := appendFile(c.metaFilePath(), int32(i)); err != nil {
+		if err := binary.Write(buf, binary.LittleEndian, int32(i)); err != nil {
 			return err
 		}
-		if err := appendFile(c.metaFilePath(), c.ends[i]); err != nil {
+		if err := binary.Write(buf, binary.LittleEndian, c.ends[i]); err != nil {
 			return err
 		}
+	}
+
+	// Write the new end points.
+	if err := appendFile(c.metaFilePath(), buf.Bytes()); err != nil {
+		return err
 	}
 	c.newFrom = len(c.ends)
 
