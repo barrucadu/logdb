@@ -272,6 +272,10 @@ func (db *LogDB) Close() error {
 	db.rwlock.Lock()
 	defer db.rwlock.Unlock()
 
+	if db.closed {
+		return ErrClosed
+	}
+
 	// First sync everything
 	err := db.sync()
 

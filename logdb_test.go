@@ -239,6 +239,7 @@ func TestNoUseClosed(t *testing.T) {
 	assert.Equal(t, ErrClosed, db.Truncate(0, 0), "expected Truncate to fail")
 	assert.Equal(t, ErrClosed, db.SetSync(0), "expected SetSync to fail")
 	assert.Equal(t, ErrClosed, db.Sync(), "expected Sync to fail")
+	assert.Equal(t, ErrClosed, db.Close(), "expected Close to fail")
 
 	_, err := db.Get(0)
 	assert.Equal(t, ErrClosed, err, "expected Get to fail")
