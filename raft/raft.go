@@ -62,7 +62,16 @@ type LogStore struct {
 // If an error is returned, the log store could not be read. This
 // shouldn't happen if it was opened successfully, but you never know.
 func New(store *logdb.LogDB) (*LogStore, error) {
-	l := LogStore{store: store, rwlock: new(sync.RWMutex)}
+	l := LogStore{
+		store:  store,
+		rwlock: new(sync.RWMutex),
+	}
+
+	h := new(codec.MsgpackHandle)
+	h.ErrorIfNoField = true
+	h.InternString = true
+	l.handle = h
+
 	oldest := store.OldestID()
 	if oldest > 0 {
 		// This works by conflating database and raft IDs, and won't
@@ -198,10 +207,6 @@ func (l *LogStore) Close() error {
 
 // Encode a log entry using messagepack.
 func (l *LogStore) encode(log *raft.Log) ([]byte, error) {
-	if l.handle == nil {
-		l.createHandle()
-	}
-
 	buf := new(bytes.Buffer)
 	err := codec.NewEncoder(buf, l.handle).Encode(*log)
 	return buf.Bytes(), err
@@ -209,17 +214,5 @@ func (l *LogStore) encode(log *raft.Log) ([]byte, error) {
 
 // Decode a log entry using messagepack.
 func (l *LogStore) decode(bs []byte, log *raft.Log) error {
-	if l.handle == nil {
-		l.createHandle()
-	}
-
 	return codec.NewDecoderBytes(bs, l.handle).Decode(log)
-}
-
-// Set the codec handle.
-func (l *LogStore) createHandle() {
-	h := new(codec.MsgpackHandle)
-	h.ErrorIfNoField = true
-	h.InternString = true
-	l.handle = h
 }
