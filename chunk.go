@@ -78,28 +78,21 @@ func isBasenameChunkDataFile(basename string) bool {
 		return false
 	}
 
-	// Must be [.+]_[0-9]+
+	// Must be [0-9]+_[0-9]+]
+	if len(bits[0]) == 0 || len(bits[1]) == 0 {
+		return false
+	}
+	first, err := strconv.ParseUint(bits[0], 10, 0)
+	if err != nil {
+		return false
+	}
 	if _, err := strconv.ParseUint(bits[1], 10, 0); err != nil {
 		return false
 	}
 
-	// Special case: '0' is allowed, even though that has a leading zero.
-	if bits[0] == "0" {
-		return true
-	}
-
-	var nozero bool
-	for _, r := range []rune(bits[1]) {
-		// Must be a digit
-		if !(r >= '0' && r <= '9') {
-			return false
-		}
-		// No leading zeroes
-		if r != '0' {
-			nozero = true
-		} else if !nozero {
-			return false
-		}
+	// Leading zeroes are disallowed.
+	if bits[0][0] == '0' {
+		return first == 0
 	}
 
 	return true
