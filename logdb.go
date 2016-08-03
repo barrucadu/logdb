@@ -147,6 +147,9 @@ func (db *LogDB) Get(id uint64) ([]byte, error) {
 	hi := len(db.chunks)
 	mid := hi / 2
 	for ; !(db.chunks[mid].oldest <= id && id < db.chunks[mid].next()); mid = (hi + lo) / 2 {
+		if hi < lo {
+			panic("hi < lo")
+		}
 		if db.chunks[mid].next() <= id {
 			lo = mid + 1
 		} else if db.chunks[mid].oldest > id {
