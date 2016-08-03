@@ -200,8 +200,10 @@ func (db *LogDB) Rollback(newNewestID uint64) error {
 
 // Truncate performs an atomic combination 'Forget'/'Rollback' operation.
 //
-// Returns 'ErrIDOutOfRange' if the new "oldest" ID is older than the current, or the new "newest" ID is greater
-// than the current, a 'DeleteError' if a chunk file could not be deleted, a 'SyncError' value if a periodic
+// If the new "oldest" ID is older than the current, it is bumped up. If the new "newest" ID is newer than the
+// current, it is knocked down.
+//
+// Returns a 'DeleteError' if a chunk file could not be deleted, a 'SyncError' value if a periodic
 // synchronisation failed, and 'ErrClosed' if the handle is closed.
 func (db *LogDB) Truncate(newOldestID, newNewestID uint64) error {
 	db.rwlock.Lock()
@@ -525,6 +527,13 @@ func (db *LogDB) newChunk() error {
 // held.
 func (db *LogDB) truncate(newOldestID, newNewestID uint64) error {
 	newNextID := newNewestID + 1
+
+	if newOldestID < db.oldest {
+		newOldestID = db.oldest
+	}
+	if newNextID > db.next {
+		newNextID = db.next
+	}
 
 	if newOldestID < db.oldest || newNextID > db.next || newOldestID > newNewestID {
 		return ErrIDOutOfRange
