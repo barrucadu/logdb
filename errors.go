@@ -25,6 +25,9 @@ var (
 	// ErrTooBig means that an entry could not be appended because
 	// it is larger than the chunk size.
 	ErrTooBig = errors.New("entry larger than chunksize")
+
+	// ErrClosed means that the database handle is closed.
+	ErrClosed = errors.New("database is closed")
 )
 
 // ReadError means that a read failed. It wraps the actual error.

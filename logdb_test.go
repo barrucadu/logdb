@@ -229,6 +229,21 @@ func TestNoOpenBadFiles(t *testing.T) {
 	assert.True(t, errwrap.ContainsType(err, ErrUnknownVersion))
 }
 
+func TestNoUseClosed(t *testing.T) {
+	db := assertCreate(t, "no_use_closed", chunkSize)
+	assertClose(t, db)
+
+	assert.Equal(t, ErrClosed, db.Append(nil), "expected Append to fail")
+	assert.Equal(t, ErrClosed, db.Forget(0), "expected Forget to fail")
+	assert.Equal(t, ErrClosed, db.Rollback(0), "expected Rollback to fail")
+	assert.Equal(t, ErrClosed, db.Truncate(0, 0), "expected Truncate to fail")
+	assert.Equal(t, ErrClosed, db.SetSync(0), "expected SetSync to fail")
+	assert.Equal(t, ErrClosed, db.Sync(), "expected Sync to fail")
+
+	_, err := db.Get(0)
+	assert.Equal(t, ErrClosed, err, "expected Get to fail")
+}
+
 /// ASSERTIONS
 
 func assertCreate(t *testing.T, testName string, cSize uint32) *LogDB {

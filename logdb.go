@@ -22,6 +22,8 @@ type LogDB struct {
 
 	lockfile *os.File
 
+	closed bool
+
 	// Any number of goroutines can read simultaneously, but when
 	// entries are added or removed, the write lock must be held.
 	//
@@ -100,6 +102,10 @@ func (db *LogDB) AppendEntries(entries [][]byte) error {
 	db.rwlock.Lock()
 	defer db.rwlock.Unlock()
 
+	if db.closed {
+		return ErrClosed
+	}
+
 	originalNewest := db.NewestID()
 
 	for _, entry := range entries {
@@ -122,6 +128,10 @@ func (db *LogDB) AppendEntries(entries [][]byte) error {
 func (db *LogDB) Get(id uint64) ([]byte, error) {
 	db.rwlock.RLock()
 	defer db.rwlock.RUnlock()
+
+	if db.closed {
+		return nil, ErrClosed
+	}
 
 	// Check ID is in range.
 	if id < db.oldest || id >= db.next || len(db.chunks) == 0 {
@@ -165,6 +175,9 @@ func (db *LogDB) Get(id uint64) ([]byte, error) {
 func (db *LogDB) Forget(newOldestID uint64) error {
 	db.rwlock.Lock()
 	defer db.rwlock.Unlock()
+	if db.closed {
+		return ErrClosed
+	}
 	return db.truncate(newOldestID, db.NewestID())
 }
 
@@ -177,6 +190,9 @@ func (db *LogDB) Forget(newOldestID uint64) error {
 func (db *LogDB) Rollback(newNewestID uint64) error {
 	db.rwlock.Lock()
 	defer db.rwlock.Unlock()
+	if db.closed {
+		return ErrClosed
+	}
 	return db.truncate(db.OldestID(), newNewestID)
 }
 
@@ -187,6 +203,9 @@ func (db *LogDB) Rollback(newNewestID uint64) error {
 func (db *LogDB) Truncate(newOldestID, newNewestID uint64) error {
 	db.rwlock.Lock()
 	defer db.rwlock.Unlock()
+	if db.closed {
+		return ErrClosed
+	}
 	return db.truncate(newOldestID, newNewestID)
 }
 
@@ -206,6 +225,9 @@ func (db *LogDB) SetSync(every int) error {
 	// Immediately perform a periodic sync.
 	db.rwlock.RLock()
 	defer db.rwlock.RUnlock()
+	if db.closed {
+		return ErrClosed
+	}
 	return db.periodicSync()
 }
 
@@ -215,6 +237,9 @@ func (db *LogDB) SetSync(every int) error {
 func (db *LogDB) Sync() error {
 	db.rwlock.RLock()
 	defer db.rwlock.RUnlock()
+	if db.closed {
+		return ErrClosed
+	}
 	return db.sync()
 }
 
@@ -251,11 +276,9 @@ func (db *LogDB) Close() error {
 	// Then release the lock
 	funlock(db.lockfile)
 
-	// Nuke the state, so that any further attempts to use this
-	// handle will die quickly.
-	db.lockfile = nil
-	db.chunks = nil
-	db.syncDirty = nil
+	// Mark the databse as closed, so any further attempts to use
+	// this handle will be errored.
+	db.closed = true
 
 	return err
 }
@@ -298,6 +321,7 @@ func createdb(path string, chunkSize uint32) (*LogDB, error) {
 
 	return &LogDB{
 		path:      path,
+		closed:    false,
 		lockfile:  lockfile,
 		chunkSize: chunkSize,
 		syncEvery: 256,
@@ -393,6 +417,7 @@ func opendb(path string) (*LogDB, error) {
 
 	return &LogDB{
 		path:      path,
+		closed:    false,
 		lockfile:  lockfile,
 		chunkSize: chunkSize,
 		chunks:    chunks,
