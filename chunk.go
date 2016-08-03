@@ -180,10 +180,13 @@ func openChunkFile(basedir string, fi os.FileInfo, priorChunk *chunk, chunkSize 
 		return chunk, &ReadError{err}
 	}
 	defer mfile.Close()
-	priorEnd := int32(-1)
 	for {
+		// metadata is in the format [index int32][end int32]
+		// metadata ends at EOF
+		// If the indices go backwards, that means entries have been rolled back
+		var idx int32
 		var this int32
-		if err := binary.Read(mfile, binary.LittleEndian, &this); err != nil {
+		if err := binary.Read(mfile, binary.LittleEndian, &idx); err != nil {
 			if err == io.EOF {
 				break
 			}
@@ -192,14 +195,36 @@ func openChunkFile(basedir string, fi os.FileInfo, priorChunk *chunk, chunkSize 
 				Err:      errwrap.Wrapf("unexpected error reading chunk metadata: {{err}}", err),
 			}
 		}
-		if this < priorEnd {
+		if idx > int32(len(chunk.ends)) {
 			return chunk, &FormatError{
 				FilePath: metaFilePath(chunk),
-				Err:      fmt.Errorf("entry ending positions are not monotonically increasing (prior %v got %v)", priorEnd, this),
+				Err:      fmt.Errorf("entry index too large (expected <=%v, got %v)", len(chunk.ends), idx),
+			}
+		}
+		if err := binary.Read(mfile, binary.LittleEndian, &this); err != nil {
+			if err == io.EOF {
+				// EOF here means that syncing failed, so just forget this last entry.
+				break
+			}
+			return chunk, &FormatError{
+				FilePath: metaFilePath(chunk),
+				Err:      err,
+			}
+		}
+		if idx < int32(len(chunk.ends)) {
+			if idx == 0 {
+				chunk.ends = nil
+			} else {
+				chunk.ends = chunk.ends[0:idx]
+			}
+		}
+		if idx > 0 && this < chunk.ends[idx-1] {
+			return chunk, &FormatError{
+				FilePath: metaFilePath(chunk),
+				Err:      fmt.Errorf("entry ending positions are not monotonically increasing (prior %v got %v)", chunk.ends[idx-1], this),
 			}
 		}
 		chunk.ends = append(chunk.ends, this)
-		priorEnd = this
 	}
 
 	// Chunk oldest/next IDs must match: there can be no gaps!
@@ -227,6 +252,9 @@ func (c *chunk) sync() error {
 
 	// Write the new end points.
 	for i := c.newFrom; i < len(c.ends); i++ {
+		if err := appendFile(metaFilePath(c), int32(i)); err != nil {
+			return err
+		}
 		if err := appendFile(metaFilePath(c), c.ends[i]); err != nil {
 			return err
 		}
