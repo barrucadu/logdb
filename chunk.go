@@ -79,7 +79,7 @@ func isBasenameChunkDataFile(basename string) bool {
 	}
 
 	// Must be [.+]_[0-9]+
-	if _, err := strconv.Atoi(bits[1]); err != nil {
+	if _, err := strconv.ParseUint(bits[1], 10, 0); err != nil {
 		return false
 	}
 
@@ -120,7 +120,7 @@ func (c *chunk) nextDataFileName(oldest uint64) string {
 		panic("malformed chunk file name: " + c.path)
 	}
 
-	num, err := strconv.Atoi(bits[0])
+	num, err := strconv.ParseUint(bits[0], 10, 0)
 	if err != nil {
 		panic("malformed chunk file name: " + c.path)
 	}
@@ -149,7 +149,7 @@ func openChunkFile(basedir string, fi os.FileInfo, priorChunk *chunk, chunkSize 
 	}
 	// This does no validation because isBasenameChunkDataFile took care of that.
 	nameBits := strings.Split(fi.Name(), sep)
-	oldnum, _ := strconv.Atoi(nameBits[2])
+	oldnum, _ := strconv.ParseUint(nameBits[2], 10, 0)
 	chunk.oldest = uint64(oldnum)
 
 	// mmap the data file
