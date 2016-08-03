@@ -43,6 +43,22 @@ func TestChunkDataFileSyntaxNoOldest(t *testing.T) {
 	})
 }
 
+func TestChunkDataFileSyntaxIDNotUint(t *testing.T) {
+	quickcheck(t, func(is [2]uint) bool {
+		chunkFileName := fmt.Sprintf("%s%s~%v%s%v", chunkPrefix, sep, is[0], sep, is[1])
+		assert.False(t, isBasenameChunkDataFile(chunkFileName), chunkFileName)
+		return true
+	})
+}
+
+func TestChunkDataFileSyntaxOldestNotUint(t *testing.T) {
+	quickcheck(t, func(is [2]uint) bool {
+		chunkFileName := fmt.Sprintf("%s%s%v%s~%v", chunkPrefix, sep, is[0], sep, is[1])
+		assert.False(t, isBasenameChunkDataFile(chunkFileName), chunkFileName)
+		return true
+	})
+}
+
 func TestChunkDataFileNext(t *testing.T) {
 	quickcheck(t, func(is [3]uint) bool {
 		c := &chunk{path: fmt.Sprintf("%s%s%v%s%v", chunkPrefix, sep, is[0], sep, is[1])}
