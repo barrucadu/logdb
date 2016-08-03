@@ -244,6 +244,25 @@ func TestNoUseClosed(t *testing.T) {
 	assert.Equal(t, ErrClosed, err, "expected Get to fail")
 }
 
+func TestNoAppendTooBig(t *testing.T) {
+	db := assertCreate(t, "no_append_too_big", 1)
+	defer assertClose(t, db)
+
+	assert.Equal(t, ErrTooBig, db.Append([]byte{1, 2, 3, 4, 5}), "expected Append to fail")
+}
+
+func TestNoGetOutOfRange(t *testing.T) {
+	db := assertCreate(t, "no_get_out_of_range", chunkSize)
+	defer assertClose(t, db)
+
+	_, err := db.Get(0)
+	assert.Equal(t, ErrIDOutOfRange, err)
+	_, err = db.Get(1)
+	assert.Equal(t, ErrIDOutOfRange, err)
+	_, err = db.Get(2)
+	assert.Equal(t, ErrIDOutOfRange, err)
+}
+
 /// ASSERTIONS
 
 func assertCreate(t *testing.T, testName string, cSize uint32) *LogDB {
