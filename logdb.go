@@ -574,6 +574,7 @@ func (db *LogDB) truncate(newOldestID, newNewestID uint64) error {
 		}
 		for i := 0; i < first; i++ {
 			db.chunks[i].delete = true
+			db.syncDirty[db.chunks[i]] = struct{}{}
 		}
 		// Then sync the db, including writing out the new
 		// oldest ID.
