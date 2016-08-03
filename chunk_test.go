@@ -1,7 +1,10 @@
 package logdb
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
+	"io"
 	"testing"
 	"testing/quick"
 
@@ -57,8 +60,56 @@ func TestChunkMetaFilePath(t *testing.T) {
 	})
 }
 
+func TestMetadata(t *testing.T) {
+	metadata := makeMetadata(t, []int32{0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5})
+	ends, err := readMetadata(metadata)
+	assert.Nil(t, err, "failed to read metadata: %s", err)
+	assert.Equal(t, []int32{0, 1, 2, 3, 4, 5}, ends, "ends")
+}
+
+func TestMetadataNonContiguousIndices(t *testing.T) {
+	metadata := makeMetadata(t, []int32{0, 0, 1, 1, 5, 2})
+	ends, err := readMetadata(metadata)
+	assert.NotNil(t, err, "expected to not parse that, got: %v", ends)
+}
+
+func TestMetadataNonIncreasingEnds(t *testing.T) {
+	metadata := makeMetadata(t, []int32{0, 0, 1, 1, 2, 0})
+	ends, err := readMetadata(metadata)
+	assert.NotNil(t, err, "expected to not parse that, got: %v", ends)
+}
+
+func TestMetadataRollback(t *testing.T) {
+	metadata := makeMetadata(t, []int32{0, 0, 1, 1, 0, 1})
+	ends, err := readMetadata(metadata)
+	assert.Nil(t, err, "failed to read metadata: %s", err)
+	assert.Equal(t, []int32{1}, ends, "failed to apply rollback, got: %v", ends)
+}
+
+func TestMetadataIncomplete(t *testing.T) {
+	metadata := makeMetadata(t, []int32{0, 0, 1})
+	ends, err := readMetadata(metadata)
+	assert.NotNil(t, err, "expected to not parse that, got: %v", ends)
+}
+
+func TestMetadataIncompleteRollback(t *testing.T) {
+	metadata := makeMetadata(t, []int32{0, 0, 1, 1, 0})
+	ends, err := readMetadata(metadata)
+	assert.NotNil(t, err, "expected to not parse that, got: %v", ends)
+}
+
+/// HELPERS
+
 func quickcheck(t *testing.T, f interface{}) {
 	if err := quick.Check(f, nil); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func makeMetadata(t testing.TB, vals []int32) io.Reader {
+	buf := new(bytes.Buffer)
+	if err := binary.Write(buf, binary.LittleEndian, vals); err != nil {
+		t.Fatal(err)
+	}
+	return buf
 }

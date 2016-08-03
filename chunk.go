@@ -171,52 +171,14 @@ func openChunkFile(basedir string, fi os.FileInfo, priorChunk *chunk, chunkSize 
 		return chunk, &ReadError{err}
 	}
 	defer mfile.Close()
-	for {
-		// metadata is in the format [index int32][end int32]
-		// metadata ends at EOF
-		// If the indices go backwards, that means entries have been rolled back
-		var idx int32
-		var this int32
-		if err := binary.Read(mfile, binary.LittleEndian, &idx); err != nil {
-			if err == io.EOF {
-				break
-			}
-			return chunk, &FormatError{
-				FilePath: (&chunk).metaFilePath(),
-				Err:      errwrap.Wrapf("unexpected error reading chunk metadata: {{err}}", err),
-			}
+	ends, err := readMetadata(mfile)
+	if err != nil {
+		return chunk, &FormatError{
+			FilePath: (&chunk).metaFilePath(),
+			Err:      err,
 		}
-		if idx > int32(len(chunk.ends)) {
-			return chunk, &FormatError{
-				FilePath: (&chunk).metaFilePath(),
-				Err:      fmt.Errorf("entry index too large (expected <=%v, got %v)", len(chunk.ends), idx),
-			}
-		}
-		if err := binary.Read(mfile, binary.LittleEndian, &this); err != nil {
-			if err == io.EOF {
-				// EOF here means that syncing failed, so just forget this last entry.
-				break
-			}
-			return chunk, &FormatError{
-				FilePath: (&chunk).metaFilePath(),
-				Err:      err,
-			}
-		}
-		if idx < int32(len(chunk.ends)) {
-			if idx == 0 {
-				chunk.ends = nil
-			} else {
-				chunk.ends = chunk.ends[0:idx]
-			}
-		}
-		if idx > 0 && this < chunk.ends[idx-1] {
-			return chunk, &FormatError{
-				FilePath: (&chunk).metaFilePath(),
-				Err:      fmt.Errorf("entry ending positions are not monotonically increasing (prior %v got %v)", chunk.ends[idx-1], this),
-			}
-		}
-		chunk.ends = append(chunk.ends, this)
 	}
+	chunk.ends = ends
 
 	// Chunk oldest/next IDs must match: there can be no gaps!
 	if priorChunk != nil && chunk.oldest != priorChunk.next {
@@ -253,4 +215,42 @@ func (c *chunk) sync() error {
 	c.newFrom = len(c.ends)
 
 	return nil
+}
+
+// Read a chunk metadata file.
+//
+// metadata is in the format [index int32][end int32], it ends at EOF.
+// If the indices go backwards, that means entries have been rolled back
+func readMetadata(r io.Reader) ([]int32, error) {
+	var ends []int32
+	var idx, this int32
+
+	for {
+		// Read the index into the ends slice.
+		if err := binary.Read(r, binary.LittleEndian, &idx); err != nil {
+			if err == io.EOF {
+				break
+			}
+			return ends, errwrap.Wrapf("unexpected error reading chunk metadata: {{err}}", err)
+		}
+		if idx > int32(len(ends)) {
+			return ends, fmt.Errorf("entry index too large (expected <=%v, got %v)", len(ends), idx)
+		}
+
+		// Read the offset. If this fails, it means that syncing failed between the two writes.
+		if err := binary.Read(r, binary.LittleEndian, &this); err != nil {
+			return ends, errwrap.Wrapf("unexpected error reading chunk metadata: {{err}}", err)
+		}
+
+		// Check the offset is geq the prior offset.
+		if idx > 0 && this < ends[idx-1] {
+			return ends, fmt.Errorf("entry ending positions are not monotonically increasing (prior %v got %v)", ends[idx-1], this)
+		}
+
+		// Pop entries from the "ends" slice so that the current index is one past the end, and append it.
+		ends = ends[0:idx]
+		ends = append(ends, this)
+	}
+
+	return ends, nil
 }
