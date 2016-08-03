@@ -484,7 +484,6 @@ func (db *LogDB) append(entry []byte) error {
 	// (IDs start from 1, not 0)
 	if db.oldest == 0 {
 		db.oldest = 1
-		lastChunk.oldest = 1
 	}
 
 	// Mark the current chunk as dirty.
