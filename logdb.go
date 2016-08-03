@@ -142,8 +142,8 @@ func (db *LogDB) Get(id uint64) ([]byte, error) {
 	lo := 0
 	hi := len(db.chunks)
 	mid := hi / 2
-	for ; !(db.chunks[mid].oldest <= id && id < db.chunks[mid].next); mid = (hi + lo) / 2 {
-		if db.chunks[mid].next <= id {
+	for ; !(db.chunks[mid].oldest <= id && id < db.chunks[mid].next()); mid = (hi + lo) / 2 {
+		if db.chunks[mid].next() <= id {
 			lo = mid + 1
 		} else if db.chunks[mid].oldest > id {
 			hi = mid - 1
@@ -411,8 +411,8 @@ func opendb(path string) (*LogDB, error) {
 	// happen if a chunk if rolled back and then the program
 	// crashes before the "next" file gets rewritten.
 	var next uint64
-	if err := readFile(path+"/next", &next); err != nil || (len(chunks) > 0 && next > chunks[len(chunks)-1].next) {
-		next = chunks[len(chunks)-1].next
+	if err := readFile(path+"/next", &next); err != nil || (len(chunks) > 0 && next > chunks[len(chunks)-1].next()) {
+		next = chunks[len(chunks)-1].next()
 	}
 
 	return &LogDB{
@@ -467,7 +467,6 @@ func (db *LogDB) append(entry []byte) error {
 	}
 	lastChunk.ends = append(lastChunk.ends, end)
 
-	lastChunk.next++
 	db.next++
 
 	// If this is the first entry ever, set the oldest ID to 1
@@ -539,14 +538,12 @@ func (db *LogDB) truncate(newOldestID, newNewestID uint64) error {
 	}
 
 	// Remove the metadata for any entries being rolled back.
-	for i := len(db.chunks) - 1; i >= 0 && db.chunks[i].next >= newNextID; i-- {
+	for i := len(db.chunks) - 1; i >= 0 && db.chunks[i].next() >= newNextID; i-- {
 		c := db.chunks[i]
-		if c.next-newNextID > uint64(len(c.ends)) {
+		if c.next()-newNextID > uint64(len(c.ends)) {
 			c.ends = nil
-			c.next = c.oldest
 		} else {
-			c.ends = c.ends[0 : uint64(len(c.ends))-(c.next-newNextID)]
-			c.next = newNextID
+			c.ends = c.ends[0 : uint64(len(c.ends))-(c.next()-newNextID)]
 		}
 		if len(c.ends) < c.newFrom {
 			c.newFrom = len(c.ends)
@@ -562,7 +559,7 @@ func (db *LogDB) truncate(newOldestID, newNewestID uint64) error {
 	// Check if this deleted any chunks
 	first := 0
 	last := len(db.chunks)
-	for ; first < len(db.chunks) && db.chunks[first].next < newOldestID; first++ {
+	for ; first < len(db.chunks) && db.chunks[first].next() < newOldestID; first++ {
 	}
 	for ; last > 0 && db.chunks[last-1].oldest > newNextID; last-- {
 	}

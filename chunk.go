@@ -31,10 +31,13 @@ type chunk struct {
 
 	oldest uint64
 
-	next uint64
-
 	newFrom int
 	delete  bool
+}
+
+// Get the next entry ID in a chunk.
+func (c *chunk) next() uint64 {
+	return c.oldest + uint64(len(c.ends))
 }
 
 // Delete the files associated with a chunk.
@@ -182,14 +185,13 @@ func openChunkFile(basedir string, fi os.FileInfo, priorChunk *chunk, chunkSize 
 	chunk.ends = ends
 
 	// Chunk oldest/next IDs must match: there can be no gaps!
-	if priorChunk != nil && chunk.oldest != priorChunk.next {
+	if priorChunk != nil && chunk.oldest != priorChunk.next() {
 		return chunk, &FormatError{
 			FilePath: (&chunk).metaFilePath(),
-			Err:      fmt.Errorf("discontinuity in entry IDs (expected %v got %v)", priorChunk.next, chunk.oldest),
+			Err:      fmt.Errorf("discontinuity in entry IDs (expected %v got %v)", priorChunk.next(), chunk.oldest),
 		}
 	}
 
-	chunk.next = chunk.oldest + uint64(len(chunk.ends))
 	return chunk, nil
 }
 
