@@ -50,6 +50,9 @@ type LogStore struct {
 	// Codec for encoding/decoding log entries.
 	handle codec.Handle
 
+	// Everything has been deleted.
+	empty bool
+
 	// Database IDs and log indices aren't guaranteed to match up: eg, if the entire cluster snapshots,
 	// deletes some entries, and then a new node joins. So keep track of the offset.
 	offset   uint64
@@ -64,6 +67,7 @@ type LogStore struct {
 func New(store *logdb.LogDB) (*LogStore, error) {
 	l := LogStore{
 		store:  store,
+		empty:  true,
 		rwlock: new(sync.RWMutex),
 	}
 
@@ -84,6 +88,7 @@ func New(store *logdb.LogDB) (*LogStore, error) {
 		}
 		l.offset = log.Index - 1
 		l.isOffset = true
+		l.empty = false
 	}
 	return &l, nil
 }
@@ -93,6 +98,10 @@ func (l *LogStore) FirstIndex() (uint64, error) {
 	l.rwlock.RLock()
 	defer l.rwlock.RUnlock()
 
+	if l.empty {
+		return 0, nil
+	}
+
 	return l.store.OldestID() + l.offset, nil
 }
 
@@ -100,6 +109,10 @@ func (l *LogStore) FirstIndex() (uint64, error) {
 func (l *LogStore) LastIndex() (uint64, error) {
 	l.rwlock.RLock()
 	defer l.rwlock.RUnlock()
+
+	if l.empty {
+		return 0, nil
+	}
 
 	return l.store.NewestID() + l.offset, nil
 }
@@ -143,6 +156,7 @@ func (l *LogStore) StoreLogs(logs []*raft.Log) error {
 		l.offset = logs[0].Index - 1
 		l.isOffset = true
 	}
+	l.empty = false
 
 	last := l.store.NewestID() + l.offset
 
@@ -181,17 +195,15 @@ func (l *LogStore) DeleteRange(min, max uint64) error {
 	first := l.store.OldestID() + l.offset
 	last := l.store.NewestID() + l.offset
 
-	if min <= first {
-		if max < first {
-			// The range is entirely before the start.
-			return nil
+	if min <= first && max >= last {
+		if err := l.store.Forget(l.store.NewestID()); err != nil {
+			return err
 		}
+		l.empty = true
+		return nil
+	} else if min <= first {
 		return l.store.Forget(max - l.offset + 1)
 	} else if max >= last {
-		if min > last {
-			// The range is entirely after the end.
-			return nil
-		}
 		return l.store.Rollback(min - l.offset - 1)
 	}
 
