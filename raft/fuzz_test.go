@@ -36,7 +36,7 @@ func fuzzLogStore(spec raft.LogStore, test raft.LogStore, rand *rand.Rand, maxop
 	lastLog := raft.Log{Index: 1 + uint64(rand.Intn(10))}
 
 	for i := 0; i < maxops; i++ {
-		action := 3 // rand.Intn(6)
+		action := rand.Intn(6)
 
 		switch action {
 		case 0:
