@@ -103,7 +103,13 @@ func isBasenameChunkDataFile(basename string) bool {
 // This function panics if the chunk path is invalid. This should
 // never happen unless openChunkSliceDB or isChunkDataFile is broken.
 func (c *chunk) nextDataFileName(oldest uint64) string {
-	bits := strings.Split(c.path, "/"+chunkPrefix+sep)
+	// If there are directories in the path, correctly identify the basename.
+	firstSep := chunkPrefix + sep
+	if strings.ContainsRune(c.path, '/') {
+		firstSep = "/" + firstSep
+	}
+
+	bits := strings.Split(c.path, firstSep)
 	if len(bits) < 2 {
 		panic("malformed chunk file name: " + c.path)
 	}
