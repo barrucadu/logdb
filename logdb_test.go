@@ -263,6 +263,33 @@ func TestNoGetOutOfRange(t *testing.T) {
 	assert.Equal(t, ErrIDOutOfRange, err)
 }
 
+func TestCorruptOldestNext(t *testing.T) {
+	db := assertCreate(t, "corrupt_oldest_next", chunkSize)
+
+	filldb(t, db, numEntries)
+
+	assertTruncate(t, db, 20, 40)
+
+	assertClose(t, db)
+
+	// Delete the "oldest" and "next" files
+	if err := os.Remove("test_db/corrupt_oldest_next/oldest"); err != nil {
+		t.Fatal("failed to remove 'oldest' file:", err)
+	}
+	if err := os.Remove("test_db/corrupt_oldest_next/next"); err != nil {
+		t.Fatal("failed to remove 'next' file:", err)
+	}
+
+	db2 := assertOpen(t, "corrupt_oldest_next")
+	defer assertClose(t, db2)
+
+	// These magic numbers are very dependent on both the chunk size and what exactly filldb writes.
+	// 'assertClose' forces a sync, which deletes some chunk files, meaning entry 44, rather than
+	// entry 1, is the oldest one. Similarly for the newest.
+	assert.Equal(t, uint64(16), db2.OldestID(), "oldest %v", db2.OldestID())
+	assert.Equal(t, uint64(43), db2.NewestID(), "newest")
+}
+
 /// ASSERTIONS
 
 func assertCreate(t *testing.T, testName string, cSize uint32) *LogDB {
