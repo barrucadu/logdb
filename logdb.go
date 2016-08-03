@@ -1,6 +1,5 @@
-// Package logdb provides an efficient log-structured database
-// supporting efficient insertion of new entries, and efficient
-// removal from either end of the log.
+// Package logdb provides an efficient log-structured database supporting efficient insertion of new entries,
+// and efficient removal from either end of the log.
 package logdb
 
 import (
@@ -15,40 +14,46 @@ const latestVersion = uint16(0)
 
 ////////// LOG-STRUCTURED DATABASE //////////
 
-// A LogDB is a reference to an efficient log-structured database
-// providing ACID consistency guarantees.
+// A LogDB is a reference to an efficient log-structured database providing ACID consistency guarantees.
 type LogDB struct {
+	// Path to the database directory.
 	path string
 
+	// Lock file used to prevent multiple simultaneous open handles: concurrent use of one handle is fine,
+	// multiple handles is not. This file is locked exclusive, not shared.
 	lockfile *os.File
 
+	// Flag indicating that the handle has been closed. This is used to give 'ErrClosed' errors.
 	closed bool
 
-	// Any number of goroutines can read simultaneously, but when
-	// entries are added or removed, the write lock must be held.
+	// Any number of goroutines can read simultaneously, but when entries are added or removed, the write
+	// lock must be held.
 	//
-	// An alternative design point to consider is to have a
-	// separate 'RWMutex' in each chunk, and hold only the
-	// necessary write locks. This would complicate locking but
-	// allow for more concurrent reading, and so may be better
-	// under some work loads.
+	// An alternative design point to consider is to have a separate 'RWMutex' in each chunk, and hold only
+	// the necessary write locks. This would complicate locking but allow for more concurrent reading, and
+	// so may be better under some work loads.
 	rwlock sync.RWMutex
 
-	// Concurrent syncing/reading is safe, but syncing/writing and
-	// syncing/syncing is not. To prevent the first, syncing
-	// claims a read lock. To prevent the latter, a special sync
-	// lock is used. Claiming a write lock would also work, but is
-	// far more heavyweight.
+	// Concurrent syncing/reading is safe, but syncing/writing and syncing/syncing is not. To prevent the
+	// first, syncing claims a read lock. To prevent the latter, a special sync lock is used. Claiming a
+	// write lock would also work, but is far more heavyweight.
 	slock sync.Mutex
 
+	// Size of individual chunks. Entries are not split over chunks, and so they cannot be bigger than this.
 	chunkSize uint32
 
+	// Chunks, in order.
 	chunks []*chunk
 
+	// Oldest and next entry IDs. The db oldest may be > the first chunk oldest, and the db next < the final
+	// chunk next, if truncation has happened.
 	oldest uint64
+	next   uint64
 
-	next uint64
-
+	// Data syncing: 'syncEvery' is how many changes (entries appended/truncated) to allow before syncing,
+	// 'sinceLastSync' keeps track of this, and 'syncDirty' is the set of chunks to sync. When syncing,
+	// first chunks are deleted newest-first, then data is flushed oldest-first. This is to maintain
+	// consistency,
 	syncEvery     int
 	sinceLastSync uint64
 	syncDirty     map[*chunk]struct{}
@@ -56,21 +61,18 @@ type LogDB struct {
 
 // Open a database.
 //
-// It is not safe to have multiple open references to the same
-// database at the same time, across any number of processes.
-// Concurrent usage of one open reference in a single process is safe.
+// It is not possible to have multiple open references to the same database, as the files are locked. Concurrent
+// usage of one open handle in a single process is safe.
 //
-// If the 'create' flag is true and the database doesn't already
-// exist, the database is created using the given chunk size. If the
-// database does exist, the chunk size is detected automatically.
+// The log is stored on disk in fixed-size files, controlled by the 'chunkSize' parameter. Entries are not split
+// over chunks, and so if entries are a fixed size, the chunk size should be a multiple of that to avoid wasting
+// space. Furthermore, no entry can be larger than the chunk size. There is a trade-off to be made: a chunk is
+// only deleted when its entries do not overlap with the live entries at all (this happens through calls to
+// 'Forget' and 'Rollback'), so a larger chunk size means fewer files, but longer persistence.
 //
-// The log is stored on disk in fixed-size files, controlled by the
-// 'chunkSize' parameter. If entries are a fixed size, the chunk size
-// should be a multiple of that to avoid wasting space. There is a
-// trade-off to be made: a chunk is only deleted when its entries do
-// not overlap with the live entries at all (this happens through
-// calls to 'Forget' and 'Rollback'), so a larger chunk size means
-// fewer files, but longer persistence.
+// If the 'create' flag is true and the database doesn't already exist, the database is created using the given
+// chunk size. If the database does exist, the chunk size parameter is ignored, and detected automatically from
+// the chunk files.
 func Open(path string, chunkSize uint32, create bool) (*LogDB, error) {
 	// Check if it already exists.
 	if stat, _ := os.Stat(path); stat != nil {
@@ -87,17 +89,17 @@ func Open(path string, chunkSize uint32, create bool) (*LogDB, error) {
 
 // Append writes a new entry to the log.
 //
-// Returns a 'WriteError' value if the database files could not be
-// written to, and a 'SyncError' value if a periodic synchronisation
-// failed.
+// Returns 'ErrTooBig' if the entry is larger than the chunk size, a 'WriteError' value if the database files
+// could not be written to, a 'SyncError' value if a periodic synchronisation failed, and 'ErrClosed' if the
+// handle is closed.
 func (db *LogDB) Append(entry []byte) error {
 	return db.AppendEntries([][]byte{entry})
 }
 
-// Atomically write a collection of new entries to the log.
+// AppendEntries atomically writes a collection of new entries to the log.
 //
-// Returns the same errors as 'Append', and an 'AtomicityError' value
-// if any entry fails to append and rolling back the log failed.
+// Returns the same errors as 'Append', and an 'AtomicityError' value if any entry fails to append and rolling
+// back the log failed.
 func (db *LogDB) AppendEntries(entries [][]byte) error {
 	db.rwlock.Lock()
 	defer db.rwlock.Unlock()
@@ -127,8 +129,8 @@ func (db *LogDB) AppendEntries(entries [][]byte) error {
 
 // Get looks up an entry by ID.
 //
-// Returns 'ErrIDOutOfRange' if the requested ID is lesser than the
-// oldest or greater than the newest.
+// Returns 'ErrIDOutOfRange' if the requested ID is lesser than the oldest or greater than the newest, and
+// 'ErrClosed' if the handle is closed.
 func (db *LogDB) Get(id uint64) ([]byte, error) {
 	db.rwlock.RLock()
 	defer db.rwlock.RUnlock()
@@ -157,8 +159,7 @@ func (db *LogDB) Get(id uint64) ([]byte, error) {
 		}
 	}
 
-	// Calculate the start and end offset, and return a copy of
-	// the relevant byte slice.
+	// Calculate the start and end offset, and return a copy of the relevant byte slice.
 	chunk := db.chunks[mid]
 	off := id - chunk.oldest
 	start := int32(0)
@@ -175,10 +176,7 @@ func (db *LogDB) Get(id uint64) ([]byte, error) {
 
 // Forget removes entries from the end of the log.
 //
-// Returns 'ErrIDOutOfRange' if the new "oldest" ID is lesser than the
-// current oldest, a 'DeleteError' if a chunk file could not be
-// deleted, and a 'SyncError' value if a periodic synchronisation
-// failed.
+// Returns the same errors as 'Truncate'.
 func (db *LogDB) Forget(newOldestID uint64) error {
 	db.rwlock.Lock()
 	defer db.rwlock.Unlock()
@@ -190,10 +188,7 @@ func (db *LogDB) Forget(newOldestID uint64) error {
 
 // Rollback removes entries from the head of the log.
 //
-// Returns 'ErrIDOutOfRange' if the new "newest" ID is greater than
-// the current next, a 'DeleteError' if a chunk file could not be
-// deleted, and a 'SyncError' value if a periodic synchronisation
-// failed.
+// Returns the same errors as 'Truncate'.
 func (db *LogDB) Rollback(newNewestID uint64) error {
 	db.rwlock.Lock()
 	defer db.rwlock.Unlock()
@@ -203,10 +198,11 @@ func (db *LogDB) Rollback(newNewestID uint64) error {
 	return db.truncate(db.OldestID(), newNewestID)
 }
 
-// Perform a combination 'Forget'/'Rollback' operation, this is
-// atomic.
+// Truncate performs an atomic combination 'Forget'/'Rollback' operation.
 //
-// Returns the same errors as 'Forget' and 'Rollback'.
+// Returns 'ErrIDOutOfRange' if the new "oldest" ID is older than the current, or the new "newest" ID is greater
+// than the current, a 'DeleteError' if a chunk file could not be deleted, a 'SyncError' value if a periodic
+// synchronisation failed, and 'ErrClosed' if the handle is closed.
 func (db *LogDB) Truncate(newOldestID, newNewestID uint64) error {
 	db.rwlock.Lock()
 	defer db.rwlock.Unlock()
@@ -216,16 +212,15 @@ func (db *LogDB) Truncate(newOldestID, newNewestID uint64) error {
 	return db.truncate(newOldestID, newNewestID)
 }
 
-// SetSync configures the database to synchronise the data to disk
-// after touching (appending, forgetting, or rolling back) at most
-// this many entries. Data is always synced if an entire chunk is
-// forgotten or rolled back.
+// SetSync configures the database to synchronise the data to disk after touching (appending, forgetting, or
+// rolling back) at most this many entries. Data is always synced if an entire chunk is forgotten or rolled
+// back.
 //
-// <0 disables periodic syncing, and 'Sync' must be called instead.
-// The default value is 256.
+// <0 disables periodic syncing, and 'Sync' must be called instead. The default value is 256. Both 0 and 1 cause
+// a 'Sync' after every write.
 //
-// Returns a 'SyncError' value if this triggered an immediate
-// synchronisation, which failed.
+// Returns a 'SyncError' value if this triggered an immediate synchronisation which failed, and 'ErrClosed' if
+// the handle is closed.
 func (db *LogDB) SetSync(every int) error {
 	db.syncEvery = every
 
@@ -240,7 +235,7 @@ func (db *LogDB) SetSync(every int) error {
 
 // Sync writes the data to disk now.
 //
-// May return a SyncError value.
+// May return a SyncError value, and 'ErrClosed' if the handle is closed.
 func (db *LogDB) Sync() error {
 	db.rwlock.RLock()
 	defer db.rwlock.RUnlock()
@@ -264,10 +259,10 @@ func (db *LogDB) NewestID() uint64 {
 	return db.next - 1
 }
 
-// Sync the database and close any open files. It is an error to try
-// to use a database after closing it.
+// Close synchronises the database to disk and closes all open files. It is an error to try to use a database
+// after closing it.
 //
-// May return a 'SyncError' value.
+// May return a 'SyncError' value, and 'ErrClosed' if the handle is already closed.
 func (db *LogDB) Close() error {
 	db.rwlock.Lock()
 	defer db.rwlock.Unlock()
@@ -296,8 +291,7 @@ func (db *LogDB) Close() error {
 
 ////////// HELPERS //////////
 
-// Create a database. It is an error to call this function if the
-// database directory already exists.
+// Create a database. It is an error to call this function if the database directory already exists.
 func createdb(path string, chunkSize uint32) (*LogDB, error) {
 	// Create the directory.
 	if err := os.MkdirAll(path, os.ModeDir|0755); err != nil {
@@ -341,8 +335,7 @@ func createdb(path string, chunkSize uint32) (*LogDB, error) {
 	}, nil
 }
 
-// Open an existing database. It is an error to call this function if
-// the database directory does not exist.
+// Open an existing database. It is an error to call this function if the database directory does not exist.
 func opendb(path string) (*LogDB, error) {
 	// Read the "version" file.
 	var version uint16
@@ -386,10 +379,8 @@ func opendb(path string) (*LogDB, error) {
 	var prior *chunk
 	var empty bool
 	for i, fi := range chunkFiles {
-		// Normally a chunk contains at least one entry. This
-		// may only false for the final chunk. So if we have a
-		// chunk file to process and the 'empty' flag is set,
-		// then we have an error.
+		// Normally a chunk contains at least one entry. This may only false for the final chunk. So if
+		// we have a chunk file to process and the 'empty' flag is set, then we have an error.
 		if empty {
 			return nil, &FormatError{
 				FilePath: prior.metaFilePath(),
@@ -406,21 +397,17 @@ func opendb(path string) (*LogDB, error) {
 		empty = len(c.ends) == 0
 	}
 
-	// If we cannot read the "oldest" file, OR the oldest entry
-	// according to the metadata is older than the oldest entry we
-	// actually have, bump it up to the newer one. This could
-	// happen if a chunk is forgotten and then the program crashes
-	// before the "oldest" file gets rewritten.
+	// If we cannot read the "oldest" file OR the oldest entry according to the metadata is older than the
+	// oldest entry we actually have, bump it up to the newer one. This could happen if a chunk is forgotten
+	// and then the program crashes before the "oldest" file gets rewritten.
 	var oldest uint64
 	if err := readFile(path+"/oldest", &oldest); err != nil || (len(chunks) > 0 && oldest < chunks[0].oldest) {
 		oldest = chunks[0].oldest
 	}
 
-	// If we cannot read the "next" file, OR the next entry
-	// according to the metadata is newer than what the final
-	// chunk thinks, cut it back to the older one. This could
-	// happen if a chunk if rolled back and then the program
-	// crashes before the "next" file gets rewritten.
+	// If we cannot read the "next" file OR the next entry according to the metadata is newer than what the
+	// final chunk thinks, cut it back to the older one. This could happen if a chunk is rolled back and
+	// then the program crashes before the "next" file gets rewritten.
 	var next uint64
 	if err := readFile(path+"/next", &next); err != nil || (len(chunks) > 0 && next > chunks[len(chunks)-1].next()) {
 		next = chunks[len(chunks)-1].next()
@@ -439,8 +426,8 @@ func opendb(path string) (*LogDB, error) {
 	}, nil
 }
 
-// Append an entry to the database, creating a new chunk if necessary,
-// and incrementing the dirty counter. Assumes a write lock is held.
+// Append an entry to the database, creating a new chunk if necessary, and incrementing the dirty counter.
+// Assumes a write lock is held.
 func (db *LogDB) append(entry []byte) error {
 	if uint32(len(entry)) > db.chunkSize {
 		return ErrTooBig
@@ -455,8 +442,7 @@ func (db *LogDB) append(entry []byte) error {
 
 	lastChunk := db.chunks[len(db.chunks)-1]
 
-	// If the last chunk doesn't have the space for this entry,
-	// create a new one.
+	// If the last chunk doesn't have the space for this entry, create a new one.
 	if len(lastChunk.ends) > 0 {
 		lastEnd := lastChunk.ends[len(lastChunk.ends)-1]
 		if db.chunkSize-uint32(lastEnd) < uint32(len(entry)) {
@@ -480,8 +466,7 @@ func (db *LogDB) append(entry []byte) error {
 
 	db.next++
 
-	// If this is the first entry ever, set the oldest ID to 1
-	// (IDs start from 1, not 0)
+	// If this is the first entry ever, set the oldest ID to 1 (IDs start from 1, not 0)
 	if db.oldest == 0 {
 		db.oldest = 1
 	}
@@ -494,13 +479,11 @@ func (db *LogDB) append(entry []byte) error {
 
 // Adds a new chunk to the database. Assumes a write lock is held.
 //
-// A chunk cannot be empty, so it is only valid to call this if an
-// entry is going to be inserted into the chunk immediately.
+// A chunk cannot be empty, so it is only valid to call this if an entry is going to be inserted into the chunk
+// immediately.
 func (db *LogDB) newChunk() error {
-	// As the chunk oldest ID is stored in the filename, we need
-	// to sync the prior chunk before creating the new one.
-	// Otherwise if the process dies before the next sync, there
-	// will be a chunk ID discontinuity.
+	// As the chunk oldest ID is stored in the filename, we need to sync the prior chunk before creating the
+	// new one. Otherwise if the process dies before the next sync, there will be a chunk ID discontinuity.
 	if len(db.chunks) > 0 {
 		if err := db.syncOne(db.chunks[len(db.chunks)-1]); err != nil {
 			return err
@@ -538,8 +521,8 @@ func (db *LogDB) newChunk() error {
 	return nil
 }
 
-// Remove entries from the beginning and end of the log, performing a
-// sync if necessary. Assumes a write lock is held.
+// Remove entries from the beginning and end of the log, performing a sync if necessary. Assumes a write lock is
+// held.
 func (db *LogDB) truncate(newOldestID, newNewestID uint64) error {
 	newNextID := newNewestID + 1
 
@@ -593,11 +576,8 @@ func (db *LogDB) truncate(newOldestID, newNewestID uint64) error {
 	return db.periodicSync()
 }
 
-// Perform a sync only if needed. Assumes a lock (read or write) is
-// held.
+// Perform a sync only if needed. Assumes a lock (read or write) is held.
 func (db *LogDB) periodicSync() error {
-	// Sync if the number of unsynced entries is above the
-	// threshold
 	if db.syncEvery >= 0 && db.sinceLastSync > uint64(db.syncEvery) {
 		return db.sync()
 	}
@@ -618,10 +598,10 @@ func (db *LogDB) sync() error {
 	}
 	sort.Sort(sort.Reverse(chunkSlice(dirtyChunks)))
 
-	// First handle deletions. As the slice is sorted in reverse order, this will delete newest-first.
-	// This avoids next/oldest inconsistencies: if chunk N+1 and some entries in chunk N are deleted,
-	// then some smaller entries are written into chunk N, the "next" of chunk N might be greater than
-	// the "oldest" of chunk N+1. By deleting first, we avoid this situation.
+	// First handle deletions. As the slice is sorted in reverse order, this will delete newest-first. This
+	// avoids next/oldest inconsistencies: if chunk N+1 and some entries in chunk N are deleted, then some
+	// smaller entries are written into chunk N, the "next" of chunk N might be greater than the "oldest" of
+	// chunk N+1. By deleting first, we avoid this situation.
 	var toSync []*chunk
 	for _, c := range dirtyChunks {
 		if c.delete {
@@ -656,9 +636,8 @@ func (db *LogDB) sync() error {
 
 // Sync a single chunk and remove it from the dirty map.
 //
-// This does not update the sinceLastSync parameter, so the next sync
-// will be slightly too early (which shouldn't be a problem for
-// correctness, but isn't so great for performance).
+// This does not update the sinceLastSync parameter, so the next sync will be slightly too early (which
+// shouldn't be a problem for correctness, but isn't so great for performance).
 func (db *LogDB) syncOne(c *chunk) error {
 	_, ok := db.syncDirty[c]
 	if !ok {

@@ -7,8 +7,7 @@ import (
 	"syscall"
 )
 
-// Create a new file with 0644 permissions and the given size,
-// truncating it if it already exists.
+// Create a new file with 0644 permissions and the given size, truncating it if it already exists.
 func createFile(path string, size uint32) error {
 	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
@@ -19,24 +18,20 @@ func createFile(path string, size uint32) error {
 	return syscall.Ftruncate(int(file.Fd()), int64(size))
 }
 
-// Write the given value to the file using little-endian byte order.
-// If the file doesn't exist, it is created. If the file does exist,
-// it is truncated. The contents of the file are synced to disk after
-// the write.
+// Write the given value to the file using little-endian byte order. If the file doesn't exist, it is created.
+// If the file does exist, it is truncated. The contents of the file are synced to disk after the write.
 func writeFile(path string, data interface{}) error {
 	return openAndWriteFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, data)
 }
 
-// Append the given value to the file using little-endian byte order.
-// If the file doesn't exist, it is created. The contents of the file
-// are synced to disk after the write.
+// Append the given value to the file using little-endian byte order. If the file doesn't exist, it is created.
+// The contents of the file are synced to disk after the write.
 func appendFile(path string, data interface{}) error {
 	return openAndWriteFile(path, os.O_RDWR|os.O_CREATE|os.O_APPEND, data)
 }
 
-// Open a file with the given flags and write the given data to it in
-// little-endian byte order. The contents of the file are synced to
-// disk after the write.
+// Open a file with the given flags and write the given data to it in little-endian byte order. The contents of
+// the file are synced to disk after the write.
 func openAndWriteFile(path string, flags int, data interface{}) error {
 	file, err := os.OpenFile(path, flags, 0644)
 	if err != nil {
@@ -51,8 +46,7 @@ func openAndWriteFile(path string, flags int, data interface{}) error {
 	return fsync(file)
 }
 
-// Read data into the given pointer from the file using little-endian
-// byte order.
+// Read data into the given pointer from the file using little-endian byte order.
 func readFile(path string, data interface{}) error {
 	file, err := os.Open(path)
 	if err != nil {
@@ -102,7 +96,6 @@ func flock(path string) (*os.File, error) {
 
 // Unlock and close a file.
 func funlock(file *os.File) error {
-	// No need to do a flock(LOCK_UN) call, as closing the fd also
-	// releases the lock.
+	// No need to do a flock(LOCK_UN) call, as closing the fd also releases the lock.
 	return file.Close()
 }

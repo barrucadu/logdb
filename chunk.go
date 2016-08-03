@@ -12,25 +12,34 @@ import (
 	"github.com/hashicorp/errwrap"
 )
 
+// Filename-related constants.
+const (
+	chunkPrefix      = "chunk"
+	metaSuffix       = "meta"
+	sep              = "_"
+	initialChunkFile = chunkPrefix + sep + "0" + sep + "1"
+)
+
 // A chunk is one memory-mapped file.
 type chunk struct {
+	// Path to the data file. The metadata file name and oldest entry ID are derived from this.
 	path string
 
+	// The memory-mapped data file. The 'bytes' slice is produced by mmaping the fd in the 'mmapf' file,
+	// meaning that it can be fsynced easily.
 	bytes []byte
 	mmapf *os.File
 
-	// One past the ending addresses of entries in the 'bytes'
-	// slice.
-	//
-	// This choice is because starting addresses can always be
-	// calculated from ending addresses, as the first entry starts
-	// at offset 0 (and there are no gaps). Ending addresses
-	// cannot be calculated from starting addresses, unless the
-	// ending address of the final entry is stored as well.
+	// One past the ending addresses of entries in the 'bytes' slice. This means that entries are contained
+	// in the segment 'bytes[prior end:end]', with the 'prior end' for the first entry being 0.
 	ends []int32
 
+	// ID of the oldest entry in the chunk. This can be determined from the filename, but it's cheaper to
+	// store it here.
 	oldest uint64
 
+	// For metadata syncing: 'newFrom' is the index of the first end that needs to be synced, and 'delete'
+	// indicates that the chunk needs to be deleted at the next sync.
 	newFrom int
 	delete  bool
 }
@@ -48,13 +57,6 @@ func (c *chunk) closeAndRemove() error {
 	return os.Remove(c.metaFilePath())
 }
 
-const (
-	chunkPrefix      = "chunk"
-	metaSuffix       = "meta"
-	sep              = "_"
-	initialChunkFile = chunkPrefix + sep + "0" + sep + "1"
-)
-
 // Get the meta file path associated with a chunk data file path.
 func metaFilePath(dataFilePath string) string {
 	return dataFilePath + sep + metaSuffix
@@ -67,8 +69,7 @@ func (c *chunk) metaFilePath() string {
 
 // Check if a file basename is a chunk data file.
 //
-// A valid chunk filename consists of the chunkPrefix followed by one
-// or more digits, with no leading zeroes.
+// A valid chunk filename consists of the chunkPrefix followed by one or more digits, with no leading zeroes.
 func isBasenameChunkDataFile(basename string) bool {
 	bits := strings.Split(basename, chunkPrefix+sep)
 	// In the form chunkPrefix[.+]
@@ -104,8 +105,8 @@ func isBasenameChunkDataFile(basename string) bool {
 
 // Given a chunk, get the filename of the next chunk.
 //
-// This function panics if the chunk path is invalid. This should
-// never happen unless openChunkSliceDB or isChunkDataFile is broken.
+// This function panics if the chunk path is invalid. This should never happen unless openChunkSliceDB or
+// isChunkDataFile is broken.
 func (c *chunk) nextDataFileName(oldest uint64) string {
 	// If there are directories in the path, correctly identify the basename.
 	firstSep := chunkPrefix + sep
@@ -131,8 +132,8 @@ func (c *chunk) nextDataFileName(oldest uint64) string {
 	return fmt.Sprintf("%s%s%v%s%v", chunkPrefix, sep, num+1, sep, oldest)
 }
 
-// Create the files for a new chunk. As an empty chunk is not allowed,
-// it is assumed that an entry will be immediately written.
+// Create the files for a new chunk. As an empty chunk is not allowed, it is assumed that an entry will be
+// immediately written.
 func createChunkFiles(dataFilePath string, chunkSize uint32, oldest uint64) error {
 	// Create the chunk files.
 	if err := createFile(dataFilePath, chunkSize); err != nil {
@@ -228,8 +229,8 @@ func (c *chunk) sync() error {
 
 // Read a chunk metadata file.
 //
-// metadata is in the format [index int32][end int32], it ends at EOF.
-// If the indices go backwards, that means entries have been rolled back
+// Metadata is in the format [index int32][end int32], it ends at EOF. If the indices go backwards, that means
+// entries have been rolled back
 func readMetadata(r io.Reader) ([]int32, error) {
 	var ends []int32
 	var idx, this int32
@@ -257,8 +258,7 @@ func readMetadata(r io.Reader) ([]int32, error) {
 		}
 
 		// Pop entries from the "ends" slice so that the current index is one past the end, and append it.
-		ends = ends[0:idx]
-		ends = append(ends, this)
+		ends = append(ends[0:idx], this)
 	}
 
 	return ends, nil

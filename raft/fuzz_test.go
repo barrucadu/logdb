@@ -27,12 +27,10 @@ func TestFuzz(t *testing.T) {
 
 /// FUZZ TESTER
 
-// Compare a "test" implementation with a "spec" implementation by
-// performing a sequence of random operations and comparing the
-// outputs.
+// Compare a "test" implementation with a "spec" implementation by performing a sequence of random operations
+// and comparing the outputs.
 func fuzzLogStore(spec raft.LogStore, test raft.LogStore, rand *rand.Rand, maxops int) error {
-	// Keep track of the last log entry generated, so indices and
-	// terms will be strictly increasing.
+	// Keep track of the last log entry generated, so indices and terms will be strictly increasing.
 	lastLog := raft.Log{Index: 1 + uint64(rand.Intn(10))}
 
 	for i := 0; i < maxops; i++ {
@@ -205,8 +203,7 @@ func badInvariant(msg string, expected, actual interface{}) error {
 	return fmt.Errorf("INVARIANT: %s\nexpected: %v\nactual:   %v", msg, expected, actual)
 }
 
-// Generate a random log entry. The pair (index,term) is strictly
-// increasing between invocations.
+// Generate a random log entry. The pair (index,term) is strictly increasing between invocations.
 func randLog(lastLog raft.Log, rand *rand.Rand) raft.Log {
 	index := lastLog.Index + 1
 	term := lastLog.Term
