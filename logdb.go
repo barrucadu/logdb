@@ -108,14 +108,18 @@ func (db *LogDB) AppendEntries(entries [][]byte) error {
 
 	originalNewest := db.NewestID()
 
+	var appended bool
 	for _, entry := range entries {
 		if err := db.append(entry); err != nil {
-			// Rollback on error.
-			if rerr := db.truncate(db.oldest, originalNewest); rerr != nil {
-				return &AtomicityError{AppendErr: err, RollbackErr: rerr}
+			// Rollback on error if we've already appended some entries.
+			if appended {
+				if rerr := db.truncate(db.oldest, originalNewest); rerr != nil {
+					return &AtomicityError{AppendErr: err, RollbackErr: rerr}
+				}
 			}
 			return err
 		}
+		appended = true
 	}
 
 	return db.periodicSync()
