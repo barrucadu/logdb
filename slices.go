@@ -19,24 +19,7 @@ func (fis fileInfoSlice) Swap(i, j int) {
 }
 
 func (fis fileInfoSlice) Less(i, j int) bool {
-	bitsI := strings.Split(fis[i].Name(), sep)
-	bitsJ := strings.Split(fis[j].Name(), sep)
-
-	max := len(bitsI)
-	if len(bitsJ) > max {
-		max = len(bitsJ)
-	}
-
-	for i := 0; i < max; i++ {
-		if i >= len(bitsI) {
-			break
-		} else if i > len(bitsJ) {
-			break
-		} else if lessLexico(bitsI[i], bitsJ[i]) {
-			return true
-		}
-	}
-	return len(bitsI) < len(bitsJ)
+	return lessFileName(fis[i].Name(), fis[j].Name())
 }
 
 // Lexicographic sorting by data file path.
@@ -51,13 +34,33 @@ func (cs chunkSlice) Swap(i, j int) {
 }
 
 func (cs chunkSlice) Less(i, j int) bool {
-	return lessLexico(cs[i].path, cs[j].path)
+	return lessFileName(cs[i].path, cs[j].path)
 }
 
-// Compare two strings lexicographically.
-func lessLexico(a, b string) bool {
-	if len(a) == len(b) {
-		return a < b
+// Compare two filenames with splitting.
+func lessFileName(a, b string) bool {
+	as := strings.Split(a, sep)
+	bs := strings.Split(b, sep)
+
+	min := len(as)
+	if len(bs) < min {
+		min = len(bs)
 	}
-	return len(a) < len(b)
+
+	for i := 0; i < min; i++ {
+		if len(as[i]) < len(bs[i]) {
+			return true
+		} else if len(as[i]) > len(bs[i]) {
+			return false
+		}
+
+		switch strings.Compare(as[i], bs[i]) {
+		case -1:
+			return true
+		case 1:
+			return false
+		}
+	}
+
+	return len(as) < len(bs)
 }
