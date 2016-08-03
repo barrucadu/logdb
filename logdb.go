@@ -512,7 +512,7 @@ func (db *LogDB) newChunk() error {
 func (db *LogDB) truncate(newOldestID, newNewestID uint64) error {
 	newNextID := newNewestID + 1
 
-	if newOldestID < db.oldest || newNextID > db.next {
+	if newOldestID < db.oldest || newNextID > db.next || newOldestID > newNewestID {
 		return ErrIDOutOfRange
 	}
 
