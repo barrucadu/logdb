@@ -405,7 +405,7 @@ func opendb(path string) (*LogDB, error) {
 		oldest = chunks[0].oldest
 	}
 
-	// If we cannot read the "newest" file, OR the next entry
+	// If we cannot read the "next" file, OR the next entry
 	// according to the metadata is newer than what the final
 	// chunk thinks, cut it back to the older one. This could
 	// happen if a chunk if rolled back and then the program
