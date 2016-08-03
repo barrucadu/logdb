@@ -470,9 +470,6 @@ func (db *LogDB) append(entry []byte) error {
 	lastChunk.next++
 	db.next++
 
-	// If the final chunk was marked for deletion, belay that.
-	lastChunk.delete = false
-
 	// If this is the first entry ever, set the oldest ID to 1
 	// (IDs start from 1, not 0)
 	if db.oldest == 0 {
