@@ -291,6 +291,11 @@ func createdb(path string, chunkSize uint32) (*LogDB, error) {
 		return nil, &WriteError{err}
 	}
 
+	// Write the "next" file.
+	if err := writeFile(path+"/next", uint64(1)); err != nil {
+		return nil, &WriteError{err}
+	}
+
 	return &LogDB{
 		path:      path,
 		lockfile:  lockfile,
@@ -333,6 +338,12 @@ func opendb(path string) (*LogDB, error) {
 		return nil, &ReadError{err}
 	}
 
+	// Read the "next" file.
+	var next uint64
+	if err := readFile(path+"/next", &next); err != nil {
+		return nil, &ReadError{err}
+	}
+
 	// Get all the chunk files.
 	var chunkFiles []os.FileInfo
 	fis, err := ioutil.ReadDir(path)
@@ -349,7 +360,6 @@ func opendb(path string) (*LogDB, error) {
 
 	// Populate the chunk slice.
 	chunks := make([]*chunk, len(chunkFiles))
-	next := uint64(1)
 	var prior *chunk
 	var empty bool
 	for i, fi := range chunkFiles {
@@ -370,7 +380,6 @@ func opendb(path string) (*LogDB, error) {
 		}
 		chunks[i] = &c
 		prior = &c
-		next = c.next
 		empty = len(c.ends) == 0
 	}
 
@@ -380,6 +389,14 @@ func opendb(path string) (*LogDB, error) {
 	// program crashes before the "oldest" file gets rewritten.
 	if len(chunks) > 0 && oldest < chunks[0].oldest {
 		oldest = chunks[0].oldest
+	}
+
+	// If the next entry according to the metadata is newer than
+	// what the final chunk thinks, cut it back to the older one.
+	// This could happen if a chunk if rolled back and then the
+	// program crashes before the "next" file gets rewritten.
+	if len(chunks) > 0 && next > chunks[len(chunks)-1].next {
+		next = chunks[len(chunks)-1].next
 	}
 
 	return &LogDB{
@@ -587,6 +604,11 @@ func (db *LogDB) sync() error {
 
 	// Write the oldest entry ID.
 	if err := writeFile(db.path+"/oldest", db.oldest); err != nil {
+		return &SyncError{err}
+	}
+
+	// Write the next entry ID.
+	if err := writeFile(db.path+"/next", db.next); err != nil {
 		return &SyncError{err}
 	}
 
