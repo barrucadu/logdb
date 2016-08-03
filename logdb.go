@@ -332,18 +332,6 @@ func opendb(path string) (*LogDB, error) {
 		return nil, &ReadError{err}
 	}
 
-	// Read the "oldest" file.
-	var oldest uint64
-	if err := readFile(path+"/oldest", &oldest); err != nil {
-		return nil, &ReadError{err}
-	}
-
-	// Read the "next" file.
-	var next uint64
-	if err := readFile(path+"/next", &next); err != nil {
-		return nil, &ReadError{err}
-	}
-
 	// Get all the chunk files.
 	var chunkFiles []os.FileInfo
 	fis, err := ioutil.ReadDir(path)
@@ -383,19 +371,23 @@ func opendb(path string) (*LogDB, error) {
 		empty = len(c.ends) == 0
 	}
 
-	// If the oldest entry according to the metadata is older than
-	// the oldest entry we actually have, bump it up to the newer
-	// one. This could happen if a chunk is forgotten and then the
-	// program crashes before the "oldest" file gets rewritten.
-	if len(chunks) > 0 && oldest < chunks[0].oldest {
+	// If we cannot read the "oldest" file, OR the oldest entry
+	// according to the metadata is older than the oldest entry we
+	// actually have, bump it up to the newer one. This could
+	// happen if a chunk is forgotten and then the program crashes
+	// before the "oldest" file gets rewritten.
+	var oldest uint64
+	if err := readFile(path+"/oldest", &oldest); err != nil || (len(chunks) > 0 && oldest < chunks[0].oldest) {
 		oldest = chunks[0].oldest
 	}
 
-	// If the next entry according to the metadata is newer than
-	// what the final chunk thinks, cut it back to the older one.
-	// This could happen if a chunk if rolled back and then the
-	// program crashes before the "next" file gets rewritten.
-	if len(chunks) > 0 && next > chunks[len(chunks)-1].next {
+	// If we cannot read the "newest" file, OR the next entry
+	// according to the metadata is newer than what the final
+	// chunk thinks, cut it back to the older one. This could
+	// happen if a chunk if rolled back and then the program
+	// crashes before the "next" file gets rewritten.
+	var next uint64
+	if err := readFile(path+"/next", &next); err != nil || (len(chunks) > 0 && next > chunks[len(chunks)-1].next) {
 		next = chunks[len(chunks)-1].next
 	}
 
