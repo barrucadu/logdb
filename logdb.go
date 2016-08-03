@@ -521,11 +521,14 @@ func (db *LogDB) truncate(newOldestID, newNewestID uint64) error {
 		c := db.chunks[i]
 		if c.next-newNextID > uint64(len(c.ends)) {
 			c.ends = nil
+			c.next = c.oldest
 		} else {
 			c.ends = c.ends[0 : uint64(len(c.ends))-(c.next-newNextID)]
 			c.next = newNextID
 		}
-		c.newFrom = len(c.ends)
+		if len(c.ends) < c.newFrom {
+			c.newFrom = len(c.ends)
+		}
 		db.syncDirty[c] = struct{}{}
 	}
 
