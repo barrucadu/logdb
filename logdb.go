@@ -339,7 +339,7 @@ func opendb(path string) (*LogDB, error) {
 		return nil, &ReadError{err}
 	}
 	for _, fi := range fis {
-		if !fi.IsDir() && isChunkDataFile(fi) {
+		if !fi.IsDir() && isBasenameChunkDataFile(fi.Name()) {
 			chunkFiles = append(chunkFiles, fi)
 		}
 	}
@@ -357,7 +357,7 @@ func opendb(path string) (*LogDB, error) {
 		// then we have an error.
 		if empty {
 			return nil, &FormatError{
-				FilePath: metaFilePath(prior),
+				FilePath: prior.metaFilePath(),
 				Err:      errors.New("metadata of non-final chunk contains no entries"),
 			}
 		}

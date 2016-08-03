@@ -41,7 +41,7 @@ func (c *chunk) closeAndRemove() error {
 	if err := closeAndRemove(c.mmapf); err != nil {
 		return err
 	}
-	return os.Remove(metaFilePath(c))
+	return os.Remove(c.metaFilePath())
 }
 
 const (
@@ -51,28 +51,22 @@ const (
 	initialChunkFile = chunkPrefix + sep + "0" + sep + "1"
 )
 
-// Get the meta file path associated with a chunk file path.
-func metaFilePath(chunkFilePath interface{}) string {
-	var path string
-	switch cfg := chunkFilePath.(type) {
-	case chunk:
-		path = cfg.path
-	case *chunk:
-		path = cfg.path
-	case string:
-		path = cfg
-	default:
-		panic("internal error: bad type in metaFilePath")
-	}
-	return path + sep + metaSuffix
+// Get the meta file path associated with a chunk data file path.
+func metaFilePath(dataFilePath string) string {
+	return dataFilePath + sep + metaSuffix
 }
 
-// Check if a file is a chunk data file.
+// Get the meta file path associated with a chunk.
+func (c *chunk) metaFilePath() string {
+	return metaFilePath(c.path)
+}
+
+// Check if a file basename is a chunk data file.
 //
 // A valid chunk filename consists of the chunkPrefix followed by one
 // or more digits, with no leading zeroes.
-func isChunkDataFile(fi os.FileInfo) bool {
-	bits := strings.Split(fi.Name(), chunkPrefix+sep)
+func isBasenameChunkDataFile(basename string) bool {
+	bits := strings.Split(basename, chunkPrefix+sep)
 	// In the form chunkPrefix[.+]
 	if len(bits) != 2 || len(bits[0]) != 0 || len(bits[1]) == 0 {
 		return false
@@ -150,14 +144,12 @@ func createChunkFiles(dataFilePath string, chunkSize uint32, oldest uint64) erro
 func openChunkFile(basedir string, fi os.FileInfo, priorChunk *chunk, chunkSize uint32) (chunk, error) {
 	chunk := chunk{path: basedir + "/" + fi.Name()}
 	// Get the oldest ID from the file name
+	if !isBasenameChunkDataFile(fi.Name()) {
+		return chunk, fmt.Errorf("invalid chunk data file name: %s", fi.Name())
+	}
+	// This does no validation because isBasenameChunkDataFile took care of that.
 	nameBits := strings.Split(fi.Name(), sep)
-	if len(nameBits) != 3 {
-		return chunk, fmt.Errorf("invalid chunk data file name: %s", fi.Name())
-	}
-	oldnum, err := strconv.Atoi(nameBits[2])
-	if err != nil {
-		return chunk, fmt.Errorf("invalid chunk data file name: %s", fi.Name())
-	}
+	oldnum, _ := strconv.Atoi(nameBits[2])
 	chunk.oldest = uint64(oldnum)
 
 	// mmap the data file
@@ -175,7 +167,7 @@ func openChunkFile(basedir string, fi os.FileInfo, priorChunk *chunk, chunkSize 
 	chunk.mmapf = mmapf
 
 	// read the ending address metadata
-	mfile, err := os.Open(metaFilePath(chunk))
+	mfile, err := os.Open((&chunk).metaFilePath())
 	if err != nil {
 		return chunk, &ReadError{err}
 	}
@@ -191,13 +183,13 @@ func openChunkFile(basedir string, fi os.FileInfo, priorChunk *chunk, chunkSize 
 				break
 			}
 			return chunk, &FormatError{
-				FilePath: metaFilePath(chunk),
+				FilePath: (&chunk).metaFilePath(),
 				Err:      errwrap.Wrapf("unexpected error reading chunk metadata: {{err}}", err),
 			}
 		}
 		if idx > int32(len(chunk.ends)) {
 			return chunk, &FormatError{
-				FilePath: metaFilePath(chunk),
+				FilePath: (&chunk).metaFilePath(),
 				Err:      fmt.Errorf("entry index too large (expected <=%v, got %v)", len(chunk.ends), idx),
 			}
 		}
@@ -207,7 +199,7 @@ func openChunkFile(basedir string, fi os.FileInfo, priorChunk *chunk, chunkSize 
 				break
 			}
 			return chunk, &FormatError{
-				FilePath: metaFilePath(chunk),
+				FilePath: (&chunk).metaFilePath(),
 				Err:      err,
 			}
 		}
@@ -220,7 +212,7 @@ func openChunkFile(basedir string, fi os.FileInfo, priorChunk *chunk, chunkSize 
 		}
 		if idx > 0 && this < chunk.ends[idx-1] {
 			return chunk, &FormatError{
-				FilePath: metaFilePath(chunk),
+				FilePath: (&chunk).metaFilePath(),
 				Err:      fmt.Errorf("entry ending positions are not monotonically increasing (prior %v got %v)", chunk.ends[idx-1], this),
 			}
 		}
@@ -230,7 +222,7 @@ func openChunkFile(basedir string, fi os.FileInfo, priorChunk *chunk, chunkSize 
 	// Chunk oldest/next IDs must match: there can be no gaps!
 	if priorChunk != nil && chunk.oldest != priorChunk.next {
 		return chunk, &FormatError{
-			FilePath: metaFilePath(chunk),
+			FilePath: (&chunk).metaFilePath(),
 			Err:      fmt.Errorf("discontinuity in entry IDs (expected %v got %v)", priorChunk.next, chunk.oldest),
 		}
 	}
@@ -252,10 +244,10 @@ func (c *chunk) sync() error {
 
 	// Write the new end points.
 	for i := c.newFrom; i < len(c.ends); i++ {
-		if err := appendFile(metaFilePath(c), int32(i)); err != nil {
+		if err := appendFile(c.metaFilePath(), int32(i)); err != nil {
 			return err
 		}
-		if err := appendFile(metaFilePath(c), c.ends[i]); err != nil {
+		if err := appendFile(c.metaFilePath(), c.ends[i]); err != nil {
 			return err
 		}
 	}
