@@ -586,15 +586,24 @@ func (db *LogDB) sync() error {
 		dirtyChunks[i] = c
 		i++
 	}
-	sort.Sort(chunkSlice(dirtyChunks))
+	sort.Sort(sort.Reverse(chunkSlice(dirtyChunks)))
 
-	// Sync the chunks in order.
+	// First handle deletions. As the slice is sorted in reverse order, this will delete newest-first.
+	// This avoids next/oldest inconsistencies: if chunk N+1 and some entries in chunk N are deleted,
+	// then some smaller entries are written into chunk N, the "next" of chunk N might be greater than
+	// the "oldest" of chunk N+1. By deleting first, we avoid this situation.
+	var toSync []*chunk
 	for _, c := range dirtyChunks {
 		if c.delete {
 			if err := c.closeAndRemove(); err != nil {
 				return &SyncError{&DeleteError{err}}
 			}
-		} else if err := c.sync(); err != nil {
+		} else {
+			toSync = append([]*chunk{c}, toSync...)
+		}
+	}
+	for _, c := range toSync {
+		if err := c.sync(); err != nil {
 			return &SyncError{err}
 		}
 	}
