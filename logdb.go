@@ -449,11 +449,21 @@ func (db *LogDB) append(entry []byte) error {
 	return nil
 }
 
-// Add a new chunk to the database. Assumes a write lock is held.
+// Adds a new chunk to the database. Assumes a write lock is held.
 //
 // A chunk cannot be empty, so it is only valid to call this if an
 // entry is going to be inserted into the chunk immediately.
 func (db *LogDB) newChunk() error {
+	// As the chunk oldest ID is stored in the filename, we need
+	// to sync the prior chunk before creating the new one.
+	// Otherwise if the process dies before the next sync, there
+	// will be a chunk ID discontinuity.
+	if len(db.chunks) > 0 {
+		if err := db.syncOne(db.chunks[len(db.chunks)-1]); err != nil {
+			return err
+		}
+	}
+
 	chunkFile := db.path + "/" + initialChunkFile
 
 	// Filename is "chunk-<1 + last chunk file name>_<next id>"
@@ -579,6 +589,26 @@ func (db *LogDB) sync() error {
 
 	db.syncDirty = make(map[*chunk]struct{})
 	db.sinceLastSync = 0
+
+	return nil
+}
+
+// Sync a single chunk and remove it from the dirty map.
+//
+// This does not update the sinceLastSync parameter, so the next sync
+// will be slightly too early (which shouldn't be a problem for
+// correctness, but isn't so great for performance).
+func (db *LogDB) syncOne(c *chunk) error {
+	_, ok := db.syncDirty[c]
+	if !ok {
+		return nil
+	}
+
+	if err := c.sync(); err != nil {
+		return &SyncError{err}
+	}
+
+	delete(db.syncDirty, c)
 
 	return nil
 }
