@@ -88,5 +88,9 @@ func assertCreateForBench(b *testing.B, benchName string) *LogStore {
 	if err != nil {
 		b.Fatal(err)
 	}
-	return New(db)
+	ldb, err := New(db)
+	if err != nil {
+		b.Fatal(err)
+	}
+	return ldb
 }

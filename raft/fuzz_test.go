@@ -33,7 +33,7 @@ func TestFuzz(t *testing.T) {
 func fuzzLogStore(spec raft.LogStore, test raft.LogStore, rand *rand.Rand, maxops int) error {
 	// Keep track of the last log entry generated, so indices and
 	// terms will be strictly increasing.
-	var lastLog raft.Log
+	lastLog := raft.Log{Index: 1 + uint64(rand.Intn(10))}
 
 	for i := 0; i < maxops; i++ {
 		action := 3 // rand.Intn(6)

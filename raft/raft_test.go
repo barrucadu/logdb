@@ -123,6 +123,35 @@ func TestDeleteRangeFromEnd(t *testing.T) {
 	}
 }
 
+func TestOffset(t *testing.T) {
+	db := assertCreate(t, "offset")
+	defer assertClose(t, db)
+
+	off := uint64(42)
+	logs := filldboff(t, db, off)
+
+	for i, log := range logs {
+		l := assertGetLog(t, db, uint64(i)+off)
+		assert.Equal(t, *log, *l)
+	}
+}
+
+func TestPersistOffset(t *testing.T) {
+	db := assertCreate(t, "persist_offset")
+
+	off := uint64(42)
+	logs := filldboff(t, db, off)
+
+	assertClose(t, db)
+	db2 := assertOpen(t, "persist_offset")
+	defer assertClose(t, db2)
+
+	for i, log := range logs {
+		l := assertGetLog(t, db2, uint64(i)+off)
+		assert.Equal(t, *log, *l)
+	}
+}
+
 /// ASSERTIONS
 
 func assertCreate(t testing.TB, testName string) *LogStore {
@@ -131,7 +160,23 @@ func assertCreate(t testing.TB, testName string) *LogStore {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(db)
+	ldb, err := New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ldb
+}
+
+func assertOpen(t testing.TB, testName string) *LogStore {
+	db, err := logdb.Open("../test_db/raft/"+testName, 0, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ldb, err := New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ldb
 }
 
 func assertClose(t testing.TB, db *LogStore) {
@@ -185,10 +230,14 @@ func assertDeleteRange(t testing.TB, db *LogStore, min, max uint64) {
 /// UTILITIES
 
 func filldb(t testing.TB, db *LogStore) []*raft.Log {
+	return filldboff(t, db, 1)
+}
+
+func filldboff(t testing.TB, db *LogStore, offset uint64) []*raft.Log {
 	logs := make([]*raft.Log, numEntries)
 	for i := 0; i < len(logs); i++ {
 		logs[i] = &raft.Log{
-			Index: uint64(i) + 1,
+			Index: uint64(i) + offset,
 			Term:  0,
 			Type:  raft.LogType(i),
 			Data:  []byte(fmt.Sprintf("log entry %v", i)),
