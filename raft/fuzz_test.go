@@ -178,6 +178,11 @@ func fuzzLogStore(spec raft.LogStore, test raft.LogStore, rand *rand.Rand, maxop
 		if specLast != testLast {
 			return badInvariant("last indices not equal", specLast, testLast)
 		}
+
+		// If there was a rollback, we need to generate earlier indices again.
+		if specLast != 0 {
+			lastLog.Index = specLast
+		}
 	}
 
 	return nil
