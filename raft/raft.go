@@ -88,7 +88,6 @@ func New(store *logdb.LogDB) (*LogStore, error) {
 		}
 		l.offset = log.Index - 1
 		l.isOffset = true
-		l.empty = false
 	}
 	return &l, nil
 }
@@ -98,10 +97,6 @@ func (l *LogStore) FirstIndex() (uint64, error) {
 	l.rwlock.RLock()
 	defer l.rwlock.RUnlock()
 
-	if l.empty {
-		return 0, nil
-	}
-
 	return l.store.OldestID() + l.offset, nil
 }
 
@@ -109,10 +104,6 @@ func (l *LogStore) FirstIndex() (uint64, error) {
 func (l *LogStore) LastIndex() (uint64, error) {
 	l.rwlock.RLock()
 	defer l.rwlock.RUnlock()
-
-	if l.empty {
-		return 0, nil
-	}
 
 	return l.store.NewestID() + l.offset, nil
 }
@@ -156,7 +147,6 @@ func (l *LogStore) StoreLogs(logs []*raft.Log) error {
 		l.offset = logs[0].Index - 1
 		l.isOffset = true
 	}
-	l.empty = false
 
 	last := l.store.NewestID() + l.offset
 
@@ -196,10 +186,9 @@ func (l *LogStore) DeleteRange(min, max uint64) error {
 	last := l.store.NewestID() + l.offset
 
 	if min <= first && max >= last {
-		if err := l.store.Forget(l.store.NewestID()); err != nil {
+		if err := l.store.Rollback(l.store.OldestID()); err != nil {
 			return err
 		}
-		l.empty = true
 		return nil
 	} else if min <= first {
 		return l.store.Forget(max - l.offset + 1)

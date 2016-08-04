@@ -97,8 +97,8 @@ func fuzzLogStore(spec raft.LogStore, test raft.LogStore, rand *rand.Rand, maxop
 		case 3:
 			// Delete randomly from either the front or back, not the middle. This matches use of
 			// this method within hashicorp/raft itself.
-			first, _ := spec.FirstIndex()
-			last, _ := spec.LastIndex()
+			first, _ := test.FirstIndex()
+			last, _ := test.LastIndex()
 
 			// Same issue here wth rand.Int63n as above.
 			if first != last {
@@ -120,6 +120,12 @@ func fuzzLogStore(spec raft.LogStore, test raft.LogStore, rand *rand.Rand, maxop
 			if specErr != nil {
 				continue
 			}
+
+			// If there was a rollback, we need to generate earlier indices again.
+			if last >= lastLog.Index {
+				idx, _ := test.LastIndex()
+				lastLog.Index = idx
+			}
 		}
 
 		// After every operation, check the indices are consistent.
@@ -132,8 +138,8 @@ func fuzzLogStore(spec raft.LogStore, test raft.LogStore, rand *rand.Rand, maxop
 		if specErr != nil {
 			continue
 		}
-		if specFirst < testFirst {
-			return badInvariant("indices not subset", specFirst, testFirst)
+		if specFirst < testFirst && specFirst != 0 {
+			return badInvariant("indices not subset (expected >=)", specFirst, testFirst)
 		}
 
 		specLast, specErr := spec.LastIndex()
@@ -145,13 +151,8 @@ func fuzzLogStore(spec raft.LogStore, test raft.LogStore, rand *rand.Rand, maxop
 		if specErr != nil {
 			continue
 		}
-		if specLast != testLast {
+		if specLast != testLast && specLast != 0 {
 			return badInvariant("last indices not equal", specLast, testLast)
-		}
-
-		// If there was a rollback, we need to generate earlier indices again.
-		if specLast != 0 {
-			lastLog.Index = specLast
 		}
 	}
 
