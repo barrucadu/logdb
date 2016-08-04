@@ -34,40 +34,10 @@ func fuzzLogStore(spec raft.LogStore, test raft.LogStore, rand *rand.Rand, maxop
 	lastLog := raft.Log{Index: 1 + uint64(rand.Intn(10))}
 
 	for i := 0; i < maxops; i++ {
-		action := rand.Intn(6)
+		action := rand.Intn(4)
 
 		switch action {
 		case 0:
-			specFirst, specErr := spec.FirstIndex()
-			testFirst, testErr := test.FirstIndex()
-
-			fmt.Printf("-> calling FirstIndex\n")
-
-			if !compareErrors(specErr, testErr) {
-				return notExpected("FirstIndex", "error values inconsistent", specErr, testErr)
-			}
-			if specErr != nil {
-				continue
-			}
-			if specFirst != testFirst {
-				return notExpected("FirstIndex", "first indices not equal", specFirst, testFirst)
-			}
-		case 1:
-			specFirst, specErr := spec.LastIndex()
-			testFirst, testErr := test.LastIndex()
-
-			fmt.Printf("-> calling LastIndex\n")
-
-			if !compareErrors(specErr, testErr) {
-				return notExpected("LastIndex", "error values inconsistent", specErr, testErr)
-			}
-			if specErr != nil {
-				continue
-			}
-			if specFirst != testFirst {
-				return notExpected("LastIndex", "indices not equal", specFirst, testFirst)
-			}
-		case 2:
 			// Generate an index, weighted towards something in range.
 			first, _ := spec.FirstIndex()
 			last, _ := spec.LastIndex()
@@ -96,7 +66,7 @@ func fuzzLogStore(spec raft.LogStore, test raft.LogStore, rand *rand.Rand, maxop
 			if !compareLogs(specLog, testLog) {
 				return notExpected("GetLog", fmt.Sprintf("log entries not equal for ID %v", idx), specLog, testLog)
 			}
-		case 3:
+		case 1:
 			lastLog = randLog(lastLog, rand)
 
 			specErr := spec.StoreLog(&lastLog)
@@ -107,7 +77,7 @@ func fuzzLogStore(spec raft.LogStore, test raft.LogStore, rand *rand.Rand, maxop
 			if !compareErrors(specErr, testErr) {
 				return notExpected("StoreLog", "error values inconsistent", specErr, testErr)
 			}
-		case 4:
+		case 2:
 			logs := make([]*raft.Log, rand.Intn(100))
 			logsV := make([]raft.Log, len(logs))
 			for i := range logs {
@@ -124,7 +94,7 @@ func fuzzLogStore(spec raft.LogStore, test raft.LogStore, rand *rand.Rand, maxop
 			if !compareErrors(specErr, testErr) {
 				return notExpected("StoreLogs", "error values inconsistent", specErr, testErr)
 			}
-		case 5:
+		case 3:
 			// Delete randomly from either the front or back, not the middle. This matches use of
 			// this method within hashicorp/raft itself.
 			first, _ := spec.FirstIndex()
@@ -162,8 +132,8 @@ func fuzzLogStore(spec raft.LogStore, test raft.LogStore, rand *rand.Rand, maxop
 		if specErr != nil {
 			continue
 		}
-		if specFirst != testFirst {
-			return badInvariant("first indices not equal", specFirst, testFirst)
+		if specFirst < testFirst {
+			return badInvariant("indices not subset", specFirst, testFirst)
 		}
 
 		specLast, specErr := spec.LastIndex()
