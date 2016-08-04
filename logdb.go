@@ -530,12 +530,15 @@ func (db *LogDB) truncate(newOldestID, newNewestID uint64) error {
 
 	if newOldestID < db.oldest {
 		newOldestID = db.oldest
+	} else if newOldestID >= db.next {
+		newOldestID = db.next - 1
 	}
 	if newNextID > db.next {
 		newNextID = db.next
+	} else if newNextID <= db.oldest {
+		newNextID = db.oldest + 1
 	}
-
-	if newOldestID < db.oldest || newNextID > db.next || newOldestID > newNewestID {
+	if newOldestID > newNextID-1 {
 		return ErrIDOutOfRange
 	}
 
