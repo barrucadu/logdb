@@ -243,6 +243,17 @@ func TestTruncate(t *testing.T) {
 	}
 }
 
+func TestNoTruncateNewLessOld(t *testing.T) {
+	db := assertCreate(t, "truncate_new_less_old", chunkSize)
+	defer assertClose(t, db)
+
+	vs := filldb(t, db, numEntries)
+	assert.Equal(t, ErrIDOutOfRange, assertTruncateError(t, db, 100, 50))
+
+	assert.Equal(t, firstID, db.OldestID())
+	assert.Equal(t, uint64(len(vs)), db.NewestID())
+}
+
 func TestPersistTruncate(t *testing.T) {
 	db := assertCreate(t, "persist_truncate", chunkSize)
 

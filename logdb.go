@@ -207,12 +207,16 @@ func (db *LogDB) Rollback(newNewestID uint64) error {
 // Truncate performs a 'Forget' followed by a 'Rollback' atomically. The semantics are that if the 'Forget'
 // fails, the 'Rollback' is not performed; but the 'Forget' is not undone either.
 //
-// Returns the same errors as 'Forget' and 'Rollback'.
+// Returns the same errors as 'Forget' and 'Rollback', and also an 'ErrIDOutOfRange' if the new newest < the
+// new oldest.
 func (db *LogDB) Truncate(newOldestID, newNewestID uint64) error {
 	db.rwlock.Lock()
 	defer db.rwlock.Unlock()
 	if db.closed {
 		return ErrClosed
+	}
+	if newNewestID < newOldestID {
+		return ErrIDOutOfRange
 	}
 	if err := db.forget(newOldestID); err != nil {
 		return err
