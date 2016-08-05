@@ -24,6 +24,9 @@ var (
 
 	// ErrClosed means that the database handle is closed.
 	ErrClosed = errors.New("database is closed")
+
+	// ErrEmptyNonfinalChunk means that the metadata for a non-final chunk has zero entries.
+	ErrEmptyNonfinalChunk = errors.New("metadata of non-final chunk contains no entries")
 )
 
 // ReadError means that a read failed. It wraps the actual error.
@@ -89,4 +92,70 @@ func (e *FormatError) Error() string {
 
 func (e *FormatError) WrappedErrors() []error {
 	return []error{e.Err}
+}
+
+// ChunkFileNameError means that a filename is not valid for a chunk file.
+type ChunkFileNameError struct {
+	FilePath string
+}
+
+func (e *ChunkFileNameError) Error() string {
+	return fmt.Sprintf("invalid chunk file name: %s", e.FilePath)
+}
+
+// ChunkSizeError means that a chunk file is not the expected size.
+type ChunkSizeError struct {
+	ChunkFilePath string
+	Expected      uint32
+	Actual        uint32
+}
+
+func (e *ChunkSizeError) Error() string {
+	return fmt.Sprintf("in chunk %s: incorrect chunk file size (expected %v, got %v)", e.ChunkFilePath, e.Expected, e.Actual)
+}
+
+// ChunkContinuityError means that two adjacent chunks do not contain a contiguous sequence of entries.
+type ChunkContinuityError struct {
+	ChunkFilePath string
+	Expected      uint64
+	Actual        uint64
+}
+
+func (e *ChunkContinuityError) Error() string {
+	return fmt.Sprintf("in chunk %s: discontinuity in entry IDs (expected %v, got %v)", e.ChunkFilePath, e.Expected, e.Actual)
+}
+
+// ChunkMetaError means that the metadata for a chunk could not be read. It wraps the actual error.
+type ChunkMetaError struct {
+	ChunkFilePath string
+	Err           error
+}
+
+func (e *ChunkMetaError) Error() string {
+	return fmt.Sprintf("error reading metadata for %s: %s", e.ChunkFilePath, e.Err.Error())
+}
+
+func (e *ChunkMetaError) WrappedErrors() []error {
+	return []error{e.Err}
+}
+
+// MetaContinuityError means that the metadata for a chunk does not contain a contiguous sequence of entries.
+type MetaContinuityError struct {
+	Expected int32
+	Actual   int32
+}
+
+func (e *MetaContinuityError) Error() string {
+	return fmt.Sprintf("entry index too large (expected <=%v, got %v)", e.Expected, e.Actual)
+}
+
+// MetaOffsetError means that the metadata for a chunk does not contain a monotonically increasing sequence
+// of entry ending offsets.
+type MetaOffsetError struct {
+	Expected int32
+	Actual   int32
+}
+
+func (e *MetaOffsetError) Error() string {
+	return fmt.Sprintf("entry offsets not monotonically increasing (expected >=%v, got %v)", e.Expected, e.Actual)
 }

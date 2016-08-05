@@ -3,7 +3,6 @@
 package logdb
 
 import (
-	"errors"
 	"io/ioutil"
 	"os"
 	"sort"
@@ -396,7 +395,7 @@ func opendb(path string) (*LogDB, error) {
 		if empty {
 			return nil, &FormatError{
 				FilePath: prior.metaFilePath(),
-				Err:      errors.New("metadata of non-final chunk contains no entries"),
+				Err:      ErrEmptyNonfinalChunk,
 			}
 		}
 

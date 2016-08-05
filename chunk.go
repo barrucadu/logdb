@@ -8,8 +8,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-
-	"github.com/hashicorp/errwrap"
 )
 
 // Filename-related constants.
@@ -149,7 +147,7 @@ func openChunkFile(basedir string, fi os.FileInfo, priorChunk *chunk, chunkSize 
 	chunk := chunk{path: basedir + "/" + fi.Name()}
 	// Get the oldest ID from the file name
 	if !isBasenameChunkDataFile(fi.Name()) {
-		return chunk, fmt.Errorf("invalid chunk data file name: %s", fi.Name())
+		return chunk, &ChunkFileNameError{fi.Name()}
 	}
 	// This does no validation because isBasenameChunkDataFile took care of that.
 	nameBits := strings.Split(fi.Name(), sep)
@@ -164,7 +162,11 @@ func openChunkFile(basedir string, fi os.FileInfo, priorChunk *chunk, chunkSize 
 	if uint32(len(bytes)) != chunkSize {
 		return chunk, &FormatError{
 			FilePath: chunk.path,
-			Err:      fmt.Errorf("incorrect file size (expected %v got %v)", chunkSize, uint32(len(bytes))),
+			Err: &ChunkSizeError{
+				ChunkFilePath: chunk.path,
+				Expected:      chunkSize,
+				Actual:        uint32(len(bytes)),
+			},
 		}
 	}
 	chunk.bytes = bytes
@@ -180,7 +182,10 @@ func openChunkFile(basedir string, fi os.FileInfo, priorChunk *chunk, chunkSize 
 	if err != nil {
 		return chunk, &FormatError{
 			FilePath: (&chunk).metaFilePath(),
-			Err:      err,
+			Err: &ChunkMetaError{
+				ChunkFilePath: chunk.path,
+				Err:           err,
+			},
 		}
 	}
 	chunk.ends = ends
@@ -189,7 +194,11 @@ func openChunkFile(basedir string, fi os.FileInfo, priorChunk *chunk, chunkSize 
 	if priorChunk != nil && chunk.oldest != priorChunk.next() {
 		return chunk, &FormatError{
 			FilePath: (&chunk).metaFilePath(),
-			Err:      fmt.Errorf("discontinuity in entry IDs (expected %v got %v)", priorChunk.next(), chunk.oldest),
+			Err: &ChunkContinuityError{
+				ChunkFilePath: chunk.path,
+				Expected:      priorChunk.next(),
+				Actual:        chunk.oldest,
+			},
 		}
 	}
 
@@ -241,20 +250,26 @@ func readMetadata(r io.Reader) ([]int32, error) {
 			if err == io.EOF {
 				break
 			}
-			return ends, errwrap.Wrapf("unexpected error reading chunk metadata: {{err}}", err)
+			return ends, err
 		}
 		if idx > int32(len(ends)) {
-			return ends, fmt.Errorf("entry index too large (expected <=%v, got %v)", len(ends), idx)
+			return ends, &MetaContinuityError{
+				Expected: int32(len(ends)),
+				Actual:   idx,
+			}
 		}
 
 		// Read the offset. If this fails, it means that syncing failed between the two writes.
 		if err := binary.Read(r, binary.LittleEndian, &this); err != nil {
-			return ends, errwrap.Wrapf("unexpected error reading chunk metadata: {{err}}", err)
+			return ends, err
 		}
 
 		// Check the offset is geq the prior offset.
 		if idx > 0 && this < ends[idx-1] {
-			return ends, fmt.Errorf("entry ending positions are not monotonically increasing (prior %v got %v)", ends[idx-1], this)
+			return ends, &MetaOffsetError{
+				Expected: int32(ends[idx-1]),
+				Actual:   this,
+			}
 		}
 
 		// Pop entries from the "ends" slice so that the current index is one past the end, and append it.
