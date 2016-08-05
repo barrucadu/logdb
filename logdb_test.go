@@ -15,6 +15,8 @@ const (
 	numEntries = 255
 )
 
+/* ***** OldestID / NewestID */
+
 func TestOneIndexed(t *testing.T) {
 	db := assertCreate(t, "one_indexed", chunkSize)
 	defer assertClose(t, db)
@@ -24,6 +26,8 @@ func TestOneIndexed(t *testing.T) {
 	assert.Equal(t, firstID, db.NewestID())
 	assertGet(t, db, 1)
 }
+
+/* ***** Append */
 
 func TestAppend(t *testing.T) {
 	db := assertCreate(t, "append", chunkSize)
@@ -83,8 +87,52 @@ func TestPersist(t *testing.T) {
 	}
 }
 
-func TestForget(t *testing.T) {
-	db := assertCreate(t, "forget", chunkSize)
+/* ***** Forget */
+
+func TestForgetZero(t *testing.T) {
+	db := assertCreate(t, "forget_zero", chunkSize)
+	defer assertClose(t, db)
+
+	assertForget(t, db, uint64(0))
+	assert.Equal(t, uint64(0), db.OldestID())
+	assert.Equal(t, uint64(0), db.NewestID())
+}
+
+func TestForgetOne(t *testing.T) {
+	db := assertCreate(t, "forget_one", chunkSize)
+	defer assertClose(t, db)
+
+	assertAppend(t, db, []byte("hello world"))
+
+	assertForget(t, db, firstID)
+	assert.Equal(t, firstID, db.OldestID())
+	assert.Equal(t, firstID, db.NewestID())
+}
+
+func TestForgetFuture(t *testing.T) {
+	db := assertCreate(t, "forget_future", chunkSize)
+	defer assertClose(t, db)
+
+	assertAppend(t, db, []byte("hello world"))
+
+	assert.Equal(t, ErrIDOutOfRange, assertForgetError(t, db, firstID+1))
+	assert.Equal(t, firstID, db.OldestID())
+	assert.Equal(t, firstID, db.NewestID())
+}
+
+func TestForgetPast(t *testing.T) {
+	db := assertCreate(t, "forget_past", chunkSize)
+	defer assertClose(t, db)
+
+	assertAppend(t, db, []byte("hello world"))
+
+	assertForget(t, db, 0)
+	assert.Equal(t, firstID, db.OldestID())
+	assert.Equal(t, firstID, db.NewestID())
+}
+
+func TestForgetMany(t *testing.T) {
+	db := assertCreate(t, "forget_many", chunkSize)
 	defer assertClose(t, db)
 
 	vs := filldb(t, db, numEntries)
@@ -103,8 +151,52 @@ func TestForget(t *testing.T) {
 	}
 }
 
-func TestRollback(t *testing.T) {
-	db := assertCreate(t, "rollback", chunkSize)
+/* ***** Rollback */
+
+func TestRollbackZero(t *testing.T) {
+	db := assertCreate(t, "rollback_zero", chunkSize)
+	defer assertClose(t, db)
+
+	assertRollback(t, db, uint64(0))
+	assert.Equal(t, uint64(0), db.OldestID())
+	assert.Equal(t, uint64(0), db.NewestID())
+}
+
+func TestRollbackOne(t *testing.T) {
+	db := assertCreate(t, "rollback_one", chunkSize)
+	defer assertClose(t, db)
+
+	assertAppend(t, db, []byte("hello world"))
+
+	assertRollback(t, db, firstID)
+	assert.Equal(t, firstID, db.OldestID())
+	assert.Equal(t, firstID, db.NewestID())
+}
+
+func TestRollbackFuture(t *testing.T) {
+	db := assertCreate(t, "rollback_future", chunkSize)
+	defer assertClose(t, db)
+
+	assertAppend(t, db, []byte("hello world"))
+
+	assertRollback(t, db, firstID+1)
+	assert.Equal(t, firstID, db.OldestID())
+	assert.Equal(t, firstID, db.NewestID())
+}
+
+func TestRollbackPast(t *testing.T) {
+	db := assertCreate(t, "rollback_past", chunkSize)
+	defer assertClose(t, db)
+
+	assertAppend(t, db, []byte("hello world"))
+
+	assert.Equal(t, ErrIDOutOfRange, assertRollbackError(t, db, 0))
+	assert.Equal(t, firstID, db.OldestID())
+	assert.Equal(t, firstID, db.NewestID())
+}
+
+func TestRollbackMany(t *testing.T) {
+	db := assertCreate(t, "rollback_many", chunkSize)
 	defer assertClose(t, db)
 
 	vs := filldb(t, db, numEntries)
@@ -122,6 +214,8 @@ func TestRollback(t *testing.T) {
 		assert.Equal(t, v, bs)
 	}
 }
+
+/* ***** Truncate */
 
 func TestTruncate(t *testing.T) {
 	db := assertCreate(t, "truncate", chunkSize)
@@ -179,6 +273,8 @@ func TestPersistTruncate(t *testing.T) {
 		assert.Equal(t, v, bs)
 	}
 }
+
+/* ***** Corruption */
 
 func TestNoOpenFile(t *testing.T) {
 	if err := writeFile("test_db/no_open_file", uint8(1)); err != nil {
@@ -358,16 +454,40 @@ func assertForget(t *testing.T, db *LogDB, newOldestID uint64) {
 	}
 }
 
+func assertForgetError(t *testing.T, db *LogDB, newOldestID uint64) error {
+	err := db.Forget(newOldestID)
+	if err == nil {
+		t.Fatal("should not be able to forget")
+	}
+	return err
+}
+
 func assertRollback(t *testing.T, db *LogDB, newNewestID uint64) {
 	if err := db.Rollback(newNewestID); err != nil {
 		t.Fatal(err)
 	}
 }
 
+func assertRollbackError(t *testing.T, db *LogDB, newNewestID uint64) error {
+	err := db.Rollback(newNewestID)
+	if err == nil {
+		t.Fatal("should not be able to rollback")
+	}
+	return err
+}
+
 func assertTruncate(t *testing.T, db *LogDB, newOldestID, newNewestID uint64) {
 	if err := db.Truncate(newOldestID, newNewestID); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func assertTruncateError(t *testing.T, db *LogDB, newOldestID, newNewestID uint64) error {
+	err := db.Truncate(newOldestID, newNewestID)
+	if err == nil {
+		t.Fatal("should not be able to truncate")
+	}
+	return err
 }
 
 /// HELPERS
