@@ -428,6 +428,18 @@ func TestCorruptOldestNext(t *testing.T) {
 	assert.Equal(t, uint64(43), db2.NewestID(), "newest")
 }
 
+func TestNoEmptyNonfinalChunk(t *testing.T) {
+	db := assertCreate(t, "no_empty_nonfinal_chunk", chunkSize)
+	filldb(t, db, numEntries)
+	assertClose(t, db)
+
+	if err := createFile("test_db/no_empty_nonfinal_chunk/chunk_0_1_meta", 0); err != nil {
+		t.Fatal("failed to truncate meta file to 0 bytes:", err)
+	}
+
+	assert.True(t, errwrap.ContainsType(assertOpenError(t, "no_empty_nonfinal_chunk"), ErrEmptyNonfinalChunk))
+}
+
 /* ***** Closing */
 
 func TestNoUseClosed(t *testing.T) {

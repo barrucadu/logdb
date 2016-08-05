@@ -16,6 +16,7 @@ const (
 	metaSuffix       = "meta"
 	sep              = "_"
 	initialChunkFile = chunkPrefix + sep + "0" + sep + "1"
+	initialMetaFile  = initialChunkFile + sep + metaSuffix
 )
 
 // A chunk is one memory-mapped file.
