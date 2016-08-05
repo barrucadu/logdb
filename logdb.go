@@ -115,7 +115,7 @@ func (db *LogDB) AppendEntries(entries [][]byte) error {
 		if err := db.append(entry); err != nil {
 			// Rollback on error if we've already appended some entries.
 			if appended {
-				if rerr := db.truncate(db.oldest, originalNewest); rerr != nil {
+				if rerr := db.rollback(originalNewest); rerr != nil {
 					return &AtomicityError{AppendErr: err, RollbackErr: rerr}
 				}
 			}
@@ -176,42 +176,48 @@ func (db *LogDB) Get(id uint64) ([]byte, error) {
 
 // Forget removes entries from the end of the log.
 //
-// Returns the same errors as 'Truncate'.
+// If the new "oldest" ID is older than the current, this is a no-op.
+//
+// Returns a 'SyncError' value if this caused a periodic sync which failed, 'ErrIDOutOfRange' if the ID is
+// newer than the "newest" ID, and 'ErrClosed' if the handle is closed.
 func (db *LogDB) Forget(newOldestID uint64) error {
 	db.rwlock.Lock()
 	defer db.rwlock.Unlock()
 	if db.closed {
 		return ErrClosed
 	}
-	return db.truncate(newOldestID, db.NewestID())
+	return db.forget(newOldestID)
 }
 
 // Rollback removes entries from the head of the log.
 //
-// Returns the same errors as 'Truncate'.
+// If the new "newest" ID is newer than the current, this is a no-op.
+//
+// Returns the same errors as 'Forget', with 'ErrIDOutOfRange' being returned if the ID is older than the
+// "oldest" ID.
 func (db *LogDB) Rollback(newNewestID uint64) error {
 	db.rwlock.Lock()
 	defer db.rwlock.Unlock()
 	if db.closed {
 		return ErrClosed
 	}
-	return db.truncate(db.OldestID(), newNewestID)
+	return db.rollback(newNewestID)
 }
 
-// Truncate performs an atomic combination 'Forget'/'Rollback' operation.
+// Truncate performs a 'Forget' followed by a 'Rollback' atomically. The semantics are that if the 'Forget'
+// fails, the 'Rollback' is not performed; but the 'Forget' is not undone either.
 //
-// If the new "oldest" ID is older than the current, it is bumped up. If the new "newest" ID is newer than the
-// current, it is knocked down.
-//
-// Returns a 'DeleteError' if a chunk file could not be deleted, a 'SyncError' value if a periodic
-// synchronisation failed, and 'ErrClosed' if the handle is closed.
+// Returns the same errors as 'Forget' and 'Rollback'.
 func (db *LogDB) Truncate(newOldestID, newNewestID uint64) error {
 	db.rwlock.Lock()
 	defer db.rwlock.Unlock()
 	if db.closed {
 		return ErrClosed
 	}
-	return db.truncate(newOldestID, newNewestID)
+	if err := db.forget(newOldestID); err != nil {
+		return err
+	}
+	return db.rollback(newNewestID)
 }
 
 // SetSync configures the database to synchronise the data to disk after touching (appending, forgetting, or
@@ -523,68 +529,82 @@ func (db *LogDB) newChunk() error {
 	return nil
 }
 
-// Remove entries from the beginning and end of the log, performing a sync if necessary. Assumes a write lock is
-// held.
-func (db *LogDB) truncate(newOldestID, newNewestID uint64) error {
-	newNextID := newNewestID + 1
-
+// Remove entries from the beginning of the log, performing a sync if necessary. Assumes a write lock is held.
+func (db *LogDB) forget(newOldestID uint64) error {
 	if newOldestID < db.oldest {
-		newOldestID = db.oldest
-	} else if newOldestID >= db.next {
-		newOldestID = db.next - 1
+		return nil
 	}
-	if newNextID > db.next {
-		newNextID = db.next
-	} else if newNextID <= db.oldest {
-		newNextID = db.oldest + 1
-	}
-	if newOldestID > newNextID-1 {
+
+	if newOldestID >= db.next {
 		return ErrIDOutOfRange
 	}
 
-	// Remove the metadata for any entries being rolled back.
-	for i := len(db.chunks) - 1; i >= 0 && db.chunks[i].next() >= newNextID; i-- {
-		c := db.chunks[i]
-		if c.next()-newNextID > uint64(len(c.ends)) {
-			c.ends = nil
-		} else {
-			c.ends = c.ends[0 : uint64(len(c.ends))-(c.next()-newNextID)]
-		}
-		if len(c.ends) < c.newFrom {
-			c.newFrom = len(c.ends)
-		}
-		db.syncDirty[c] = struct{}{}
-	}
-
 	db.sinceLastSync += newOldestID - db.oldest
-	db.sinceLastSync += db.next - newNextID
 	db.oldest = newOldestID
-	db.next = newNextID
 
-	// Check if this deleted any chunks
-	first := 0
-	last := len(db.chunks)
-	for ; first < len(db.chunks) && db.chunks[first].next() < newOldestID; first++ {
-	}
-	for ; last > 0 && db.chunks[last-1].oldest > newNextID; last-- {
+	// Mark too-old chunks for deletion.
+	var first int
+	for first = 0; first < len(db.chunks) && db.chunks[first].next() <= newOldestID; first++ {
+		c := db.chunks[first]
+		db.syncDirty[c] = struct{}{}
+		c.delete = true
 	}
 
-	if first > 0 || last < len(db.chunks) {
-		// Mark the chunks for deletion.
-		for i := last; i < len(db.chunks); i++ {
-			db.chunks[i].delete = true
-		}
-		for i := 0; i < first; i++ {
-			db.chunks[i].delete = true
-			db.syncDirty[db.chunks[i]] = struct{}{}
-		}
-		// Then sync the db, including writing out the new
-		// oldest ID.
+	// If this deleted any chunks, perform a sync.
+	if first > 0 {
 		if err := db.sync(); err != nil {
 			return err
 		}
-		db.chunks = db.chunks[first:last]
+		db.chunks = db.chunks[first:]
 	}
+
+	// Perform a periodic sync.
+	return db.periodicSync()
+}
+
+// Remove entries from the end of the log, performing a sync if necessary. Assumes a write lock is held.
+func (db *LogDB) rollback(newNewestID uint64) error {
+	newNextID := newNewestID + 1
+
+	if newNextID > db.next {
+		return nil
+	}
+
+	if newNextID <= db.oldest {
+		return ErrIDOutOfRange
+	}
+
+	db.sinceLastSync += db.next - newNextID
+	db.next = newNextID
+
+	// Update chunk metadata and mark too-new chunks for deletion.
+	var last int
+	for last = len(db.chunks) - 1; last >= 0; last-- {
+		c := db.chunks[last]
+		db.syncDirty[c] = struct{}{}
+		if newNextID <= c.oldest {
+			c.ends = nil
+			c.delete = true
+		} else {
+			toRemove := c.next() - newNextID
+			c.ends = c.ends[0 : uint64(len(c.ends))-toRemove]
+			if len(c.ends) < c.newFrom {
+				c.newFrom = len(c.ends)
+			}
+			break
+		}
+	}
+	last++
+
+	// If this deleted any chunks, perform a sync.
+	if last < len(db.chunks) {
+		if err := db.sync(); err != nil {
+			return err
+		}
+		db.chunks = db.chunks[:last]
+	}
+
+	// Perform a periodic sync
 	return db.periodicSync()
 }
 
