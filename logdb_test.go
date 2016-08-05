@@ -217,8 +217,52 @@ func TestRollbackMany(t *testing.T) {
 
 /* ***** Truncate */
 
-func TestTruncate(t *testing.T) {
-	db := assertCreate(t, "truncate", chunkSize)
+func TestTruncateZero(t *testing.T) {
+	db := assertCreate(t, "truncate_zero", chunkSize)
+	defer assertClose(t, db)
+
+	assertTruncate(t, db, 0, 0)
+	assert.Equal(t, uint64(0), db.OldestID())
+	assert.Equal(t, uint64(0), db.NewestID())
+}
+
+func TestTruncateOne(t *testing.T) {
+	db := assertCreate(t, "truncate_one", chunkSize)
+	defer assertClose(t, db)
+
+	assertAppend(t, db, []byte("hello world"))
+
+	assertTruncate(t, db, firstID, firstID)
+	assert.Equal(t, firstID, db.OldestID())
+	assert.Equal(t, firstID, db.NewestID())
+}
+
+func TestTruncateOldFuture(t *testing.T) {
+	db := assertCreate(t, "truncate_old_future", chunkSize)
+	defer assertClose(t, db)
+
+	assertAppend(t, db, []byte("hello world"))
+
+	assert.Equal(t, ErrIDOutOfRange, assertTruncateError(t, db, 50, 999))
+	assert.Equal(t, firstID, db.OldestID())
+	assert.Equal(t, firstID, db.NewestID())
+}
+
+func TestTruncateNewPast(t *testing.T) {
+	db := assertCreate(t, "truncate_new_past", chunkSize)
+	defer assertClose(t, db)
+
+	assertAppend(t, db, []byte("hello world"))
+	assertAppend(t, db, []byte("hello world"))
+	assertForget(t, db, 2)
+
+	assert.Equal(t, ErrIDOutOfRange, assertTruncateError(t, db, firstID, firstID))
+	assert.Equal(t, uint64(2), db.OldestID())
+	assert.Equal(t, uint64(2), db.NewestID())
+}
+
+func TestTruncateMany(t *testing.T) {
+	db := assertCreate(t, "truncate_many", chunkSize)
 	defer assertClose(t, db)
 
 	vs := filldb(t, db, numEntries)
