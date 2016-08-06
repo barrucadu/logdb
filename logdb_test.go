@@ -456,7 +456,30 @@ func TestNoOpenZeroSizeNonfinalChunk(t *testing.T) {
 		t.Fatal("failed to truncate chunk file to 0 bytes:", err)
 	}
 
-	assertOpenError(t, "no_open_zero_size_nonfinal_chunk")
+	_ = assertOpenError(t, "no_open_zero_size_nonfinal_chunk")
+}
+
+func TestMissingMetaFinalChunk(t *testing.T) {
+	db := assertCreate(t, "missing_meta_final_chunk", chunkSize)
+	assertClose(t, db)
+
+	if err := createFile("test_db/missing_meta_final_chunk/"+initialChunkFile, chunkSize); err != nil {
+		t.Fatal("failed to create chunk file:", err)
+	}
+
+	assertClose(t, assertOpen(t, "missing_meta_final_chunk"))
+}
+
+func TestNoOpenMissingMetaNonfinalChunk(t *testing.T) {
+	db := assertCreate(t, "no_open_missing_meta_nonfinal_chunk", chunkSize)
+	filldb(t, db, numEntries)
+	assertClose(t, db)
+
+	if err := os.Remove("test_db/no_open_missing_meta_nonfinal_chunk/" + initialMetaFile); err != nil {
+		t.Fatal("failed to delete meta file:", err)
+	}
+
+	_ = assertOpenError(t, "no_open_missing_meta_nonfinal_chunk")
 }
 
 /* ***** Syncing */

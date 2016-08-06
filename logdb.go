@@ -383,14 +383,21 @@ func opendb(path string) (*LogDB, error) {
 
 	sort.Sort(fileInfoSlice(chunkFiles))
 
-	// The final chunk may be zero-size, if the program died between the file being created and it being sized.
-	// If it is, delete it.
 	if len(chunkFiles) > 0 {
 		final := chunkFiles[len(chunkFiles)-1]
 		filePath := path + "/" + final.Name()
+		metaPath := metaFilePath(filePath)
+
 		if final.Size() == 0 {
+			// The final chunk may be zero-size, if the program died between the file being created
+			// and it being sized. If it is, delete it.
 			_ = os.Remove(filePath)
-			_ = os.Remove(metaFilePath(filePath))
+			_ = os.Remove(metaPath)
+			chunkFiles = chunkFiles[:len(chunkFiles)-1]
+		} else if _, err := os.Stat(metaPath); err != nil {
+			// Similarly, the final chunk may have no metadata file.
+			_ = os.Remove(filePath)
+			_ = os.Remove(metaPath)
 			chunkFiles = chunkFiles[:len(chunkFiles)-1]
 		}
 	}
