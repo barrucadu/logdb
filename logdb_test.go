@@ -401,8 +401,8 @@ func TestNoOpenBadFiles(t *testing.T) {
 	assert.True(t, errwrap.ContainsType(err, ErrUnknownVersion))
 }
 
-func TestCorruptOldestNext(t *testing.T) {
-	db := assertCreate(t, "corrupt_oldest_next", chunkSize)
+func TestCorruptOldest(t *testing.T) {
+	db := assertCreate(t, "corrupt_oldest", chunkSize)
 
 	filldb(t, db, numEntries)
 
@@ -410,22 +410,18 @@ func TestCorruptOldestNext(t *testing.T) {
 
 	assertClose(t, db)
 
-	// Delete the "oldest" and "next" files
-	if err := os.Remove("test_db/corrupt_oldest_next/oldest"); err != nil {
+	// Delete the "oldest" file
+	if err := os.Remove("test_db/corrupt_oldest/oldest"); err != nil {
 		t.Fatal("failed to remove 'oldest' file:", err)
 	}
-	if err := os.Remove("test_db/corrupt_oldest_next/next"); err != nil {
-		t.Fatal("failed to remove 'next' file:", err)
-	}
 
-	db2 := assertOpen(t, "corrupt_oldest_next")
+	db2 := assertOpen(t, "corrupt_oldest")
 	defer assertClose(t, db2)
 
-	// These magic numbers are very dependent on both the chunk size and what exactly filldb writes.
+	// This magic number is very dependent on both the chunk size and what exactly filldb writes.
 	// 'assertClose' forces a sync, which deletes some chunk files, meaning entry 44, rather than
-	// entry 1, is the oldest one. Similarly for the newest.
+	// entry 1, is the oldest one.
 	assert.Equal(t, uint64(16), db2.OldestID(), "oldest %v", db2.OldestID())
-	assert.Equal(t, uint64(43), db2.NewestID(), "newest")
 }
 
 func TestNoEmptyNonfinalChunk(t *testing.T) {

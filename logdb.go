@@ -44,10 +44,8 @@ type LogDB struct {
 	// Chunks, in order.
 	chunks []*chunk
 
-	// Oldest and next entry IDs. The db oldest may be > the first chunk oldest, and the db next < the final
-	// chunk next, if truncation has happened.
+	// Oldest and entry IDs. The db oldest may be > the first chunk oldest if forgetting has happened.
 	oldest uint64
-	next   uint64
 
 	// Data syncing: 'syncEvery' is how many changes (entries appended/truncated) to allow before syncing,
 	// 'sinceLastSync' keeps track of this, and 'syncDirty' is the set of chunks to sync. When syncing,
@@ -107,7 +105,7 @@ func (db *LogDB) AppendEntries(entries [][]byte) error {
 		return ErrClosed
 	}
 
-	originalNewest := db.NewestID()
+	originalNewest := db.next() - 1
 
 	var appended bool
 	for _, entry := range entries {
@@ -139,7 +137,7 @@ func (db *LogDB) Get(id uint64) ([]byte, error) {
 	}
 
 	// Check ID is in range.
-	if id < db.oldest || id >= db.next || len(db.chunks) == 0 {
+	if id < db.oldest || id >= db.next() || len(db.chunks) == 0 {
 		return nil, ErrIDOutOfRange
 	}
 
@@ -260,6 +258,9 @@ func (db *LogDB) Sync() error {
 //
 // For an empty database, this will return 0.
 func (db *LogDB) OldestID() uint64 {
+	db.rwlock.RLock()
+	defer db.rwlock.RUnlock()
+
 	return db.oldest
 }
 
@@ -267,7 +268,10 @@ func (db *LogDB) OldestID() uint64 {
 //
 // For an empty database, this will return 0.
 func (db *LogDB) NewestID() uint64 {
-	return db.next - 1
+	db.rwlock.RLock()
+	defer db.rwlock.RUnlock()
+
+	return db.next() - 1
 }
 
 // Close synchronises the database to disk and closes all open files. It is an error to try to use a database
@@ -330,18 +334,12 @@ func createdb(path string, chunkSize uint32) (*LogDB, error) {
 		return nil, &WriteError{err}
 	}
 
-	// Write the "next" file.
-	if err := writeFile(path+"/next", uint64(1)); err != nil {
-		return nil, &WriteError{err}
-	}
-
 	return &LogDB{
 		path:      path,
 		closed:    false,
 		lockfile:  lockfile,
 		chunkSize: chunkSize,
 		syncEvery: 256,
-		next:      1,
 		syncDirty: make(map[*chunk]struct{}),
 	}, nil
 }
@@ -416,14 +414,6 @@ func opendb(path string) (*LogDB, error) {
 		oldest = chunks[0].oldest
 	}
 
-	// If we cannot read the "next" file OR the next entry according to the metadata is newer than what the
-	// final chunk thinks, cut it back to the older one. This could happen if a chunk is rolled back and
-	// then the program crashes before the "next" file gets rewritten.
-	var next uint64
-	if err := readFile(path+"/next", &next); err != nil || (len(chunks) > 0 && next > chunks[len(chunks)-1].next()) {
-		next = chunks[len(chunks)-1].next()
-	}
-
 	return &LogDB{
 		path:      path,
 		closed:    false,
@@ -431,10 +421,17 @@ func opendb(path string) (*LogDB, error) {
 		chunkSize: chunkSize,
 		chunks:    chunks,
 		oldest:    oldest,
-		next:      next,
 		syncEvery: 100,
 		syncDirty: make(map[*chunk]struct{}),
 	}, nil
+}
+
+// Return the 'next' value of the last chunk. Assumes a read lock is held.
+func (db *LogDB) next() uint64 {
+	if len(db.chunks) == 0 {
+		return 1
+	}
+	return db.chunks[len(db.chunks)-1].next()
 }
 
 // Append an entry to the database, creating a new chunk if necessary, and incrementing the dirty counter.
@@ -475,8 +472,6 @@ func (db *LogDB) append(entry []byte) error {
 	}
 	lastChunk.ends = append(lastChunk.ends, end)
 
-	db.next++
-
 	// If this is the first entry ever, set the oldest ID to 1 (IDs start from 1, not 0)
 	if db.oldest == 0 {
 		db.oldest = 1
@@ -505,11 +500,11 @@ func (db *LogDB) newChunk() error {
 
 	// Filename is "chunk-<1 + last chunk file name>_<next id>"
 	if len(db.chunks) > 0 {
-		chunkFile = db.path + "/" + db.chunks[len(db.chunks)-1].nextDataFileName(db.next)
+		chunkFile = db.path + "/" + db.chunks[len(db.chunks)-1].nextDataFileName(db.next())
 	}
 
 	// Create the files for a new chunk.
-	err := createChunkFiles(chunkFile, db.chunkSize, db.next)
+	err := createChunkFiles(chunkFile, db.chunkSize, db.next())
 	if err != nil {
 		return err
 	}
@@ -538,7 +533,7 @@ func (db *LogDB) forget(newOldestID uint64) error {
 		return nil
 	}
 
-	if newOldestID >= db.next {
+	if newOldestID >= db.next() {
 		return ErrIDOutOfRange
 	}
 
@@ -569,7 +564,7 @@ func (db *LogDB) forget(newOldestID uint64) error {
 func (db *LogDB) rollback(newNewestID uint64) error {
 	newNextID := newNewestID + 1
 
-	if newNextID > db.next {
+	if newNextID > db.next() {
 		return nil
 	}
 
@@ -577,8 +572,7 @@ func (db *LogDB) rollback(newNewestID uint64) error {
 		return ErrIDOutOfRange
 	}
 
-	db.sinceLastSync += db.next - newNextID
-	db.next = newNextID
+	db.sinceLastSync += db.next() - newNextID
 
 	// Update chunk metadata and mark too-new chunks for deletion.
 	var last int
@@ -592,7 +586,8 @@ func (db *LogDB) rollback(newNewestID uint64) error {
 			toRemove := c.next() - newNextID
 			c.ends = c.ends[0 : uint64(len(c.ends))-toRemove]
 			if len(c.ends) < c.newFrom {
-				c.newFrom = len(c.ends)
+				// Force the new last entry to be written out again.
+				c.newFrom = len(c.ends) - 1
 			}
 			break
 		}
@@ -655,11 +650,6 @@ func (db *LogDB) sync() error {
 
 	// Write the oldest entry ID.
 	if err := writeFile(db.path+"/oldest", db.oldest); err != nil {
-		return &SyncError{err}
-	}
-
-	// Write the next entry ID.
-	if err := writeFile(db.path+"/next", db.next); err != nil {
 		return &SyncError{err}
 	}
 
