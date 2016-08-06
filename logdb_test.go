@@ -436,6 +436,29 @@ func TestNoEmptyNonfinalChunk(t *testing.T) {
 	assert.True(t, errwrap.ContainsType(assertOpenError(t, "no_empty_nonfinal_chunk"), ErrEmptyNonfinalChunk))
 }
 
+func TestZeroSizeFinalChunk(t *testing.T) {
+	db := assertCreate(t, "zero_size_final_chunk", chunkSize)
+	assertClose(t, db)
+
+	if err := createFile("test_db/zero_size_final_chunk/"+initialChunkFile, 0); err != nil {
+		t.Fatal("failed to create zero-sized chunk file:", err)
+	}
+
+	assertClose(t, assertOpen(t, "zero_size_final_chunk"))
+}
+
+func TestNoOpenZeroSizeNonfinalChunk(t *testing.T) {
+	db := assertCreate(t, "no_open_zero_size_nonfinal_chunk", chunkSize)
+	filldb(t, db, numEntries)
+	assertClose(t, db)
+
+	if err := createFile("test_db/no_open_zero_size_nonfinal_chunk/"+initialChunkFile, 0); err != nil {
+		t.Fatal("failed to truncate chunk file to 0 bytes:", err)
+	}
+
+	assertOpenError(t, "no_open_zero_size_nonfinal_chunk")
+}
+
 /* ***** Syncing */
 
 func TestDisablePerioidSync(t *testing.T) {
