@@ -433,11 +433,59 @@ func TestNoEmptyNonfinalChunk(t *testing.T) {
 	filldb(t, db, numEntries)
 	assertClose(t, db)
 
-	if err := createFile("test_db/no_empty_nonfinal_chunk/chunk_0_1_meta", 0); err != nil {
+	if err := createFile("test_db/no_empty_nonfinal_chunk/"+initialMetaFile, 0); err != nil {
 		t.Fatal("failed to truncate meta file to 0 bytes:", err)
 	}
 
 	assert.True(t, errwrap.ContainsType(assertOpenError(t, "no_empty_nonfinal_chunk"), ErrEmptyNonfinalChunk))
+}
+
+/* ***** Syncing */
+
+func TestDisablePerioidSync(t *testing.T) {
+	// Allocate a huge chunk file, because a sync is forced when a
+	// chunk is filled, regardless of the periodic syncing
+	// behaviour.
+	db := assertCreate(t, "disable_periodic_sync", 1024*1024*1024)
+	defer assertClose(t, db)
+
+	assertSetSync(t, db, -1)
+
+	// Write far more than the defauly syncing period.
+	filldb(t, db, numEntries*2)
+
+	// Check there is no metadata.
+	if fi, err := os.Stat("test_db/disable_periodic_sync/" + initialMetaFile); !(err == nil && fi.Size() == 0) {
+		t.Fatal("expected no metadata, got:", fi.Size(), err)
+	}
+}
+
+func TestExplicitSync(t *testing.T) {
+	db := assertCreate(t, "explicit_sync", 1024*1024*1024)
+	defer assertClose(t, db)
+
+	assertSetSync(t, db, -1)
+	filldb(t, db, numEntries*2)
+
+	assertSync(t, db)
+
+	// Check there is metadata.
+	if fi, err := os.Stat("test_db/disable_periodic_sync/" + initialMetaFile); !(err == nil && fi.Size() > 0) {
+		t.Fatal("expected metadata, got:", fi.Size(), err)
+	}
+}
+
+func TestSetSyncSyncs(t *testing.T) {
+	db := assertCreate(t, "setsync_syncs", 1024*1024*1024)
+	defer assertClose(t, db)
+
+	assertSetSync(t, db, -1)
+	filldb(t, db, numEntries*2)
+	assertSetSync(t, db, 3)
+
+	if fi, err := os.Stat("test_db/disable_periodic_sync/" + initialMetaFile); !(err == nil && fi.Size() > 0) {
+		t.Fatal("expected metadata to exist, got:", fi.Size(), err)
+	}
 }
 
 /* ***** Closing */
@@ -559,6 +607,18 @@ func assertTruncateError(t *testing.T, db *LogDB, newOldestID, newNewestID uint6
 		t.Fatal("should not be able to truncate")
 	}
 	return err
+}
+
+func assertSetSync(t *testing.T, db *LogDB, every int) {
+	if err := db.SetSync(every); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertSync(t *testing.T, db *LogDB) {
+	if err := db.Sync(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 /// HELPERS
