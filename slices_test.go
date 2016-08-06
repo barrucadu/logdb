@@ -12,13 +12,13 @@ import (
 
 func TestLessFileName(t *testing.T) {
 	cmps := [][]string{
-		[]string{"chunk_0_1", "chunk_1_5"},
-		[]string{"chunk_1_5", "chunk_2_8"},
-		[]string{"chunk_2_8", "chunk_3_0"},
-		[]string{"chunk_3_0", "chunk_4_9"},
-		[]string{"chunk_4_9", "chunk_10_5"},
-		[]string{"chunk_10_5", "chunk_10_10"},
-		[]string{"chunk_10", "chunk_10_10"},
+		{"chunk_0_1", "chunk_1_5"},
+		{"chunk_1_5", "chunk_2_8"},
+		{"chunk_2_8", "chunk_3_0"},
+		{"chunk_3_0", "chunk_4_9"},
+		{"chunk_4_9", "chunk_10_5"},
+		{"chunk_10_5", "chunk_10_10"},
+		{"chunk_10", "chunk_10_10"},
 	}
 
 	for _, cmp := range cmps {
@@ -55,13 +55,13 @@ func TestSortFileInfoSlice(t *testing.T) {
 
 func TestSortChunkSlice(t *testing.T) {
 	sorted := []*chunk{
-		&chunk{path: "chunk_0_1"},
-		&chunk{path: "chunk_1_5"},
-		&chunk{path: "chunk_2_8"},
-		&chunk{path: "chunk_3_0"},
-		&chunk{path: "chunk_4_9"},
-		&chunk{path: "chunk_10_5"},
-		&chunk{path: "chunk_10_10"},
+		{path: "chunk_0_1"},
+		{path: "chunk_1_5"},
+		{path: "chunk_2_8"},
+		{path: "chunk_3_0"},
+		{path: "chunk_4_9"},
+		{path: "chunk_10_5"},
+		{path: "chunk_10_10"},
 	}
 
 	// Copy and shuffle

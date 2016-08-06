@@ -641,7 +641,7 @@ func (db *LogDB) sync() error {
 	// Produce a sorted list of chunks to sync.
 	dirtyChunks := make([]*chunk, len(db.syncDirty))
 	var i int
-	for c, _ := range db.syncDirty {
+	for c := range db.syncDirty {
 		dirtyChunks[i] = c
 		i++
 	}
