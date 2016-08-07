@@ -29,6 +29,45 @@ Project Status
 Very early days.  The API is unstable, and everything is in flux.
 
 
+Data Consistency
+----------------
+
+The guiding principle for consistency and correctness is that, no
+matter where the program is interrupted, there should never be silent
+corruption in the database. In particular, this means:
+
+- If an `Append` is interrupted, or a `Sync` following an `Append` is
+  interrupted, the entry will either be there or not: if the entry is
+  accessible, it will have the expected contents.
+
+- If an `AppendEntries` is interrupted, or a `Sync` following an
+  `AppendEntries` is interrupted, some of the entries may not be
+  there, but there will be no gaps: if any messages are there, it will
+  be an initial portion of the appended ones, with the expected
+  contents (as with `Append`).
+
+- If a `Forget`, `Rollback`, or `Truncate` is interrupted, or a `Sync`
+  following one of those is interrupted, some of the entries may
+  remain: but there will be no gaps; it won't be possible to access
+  both entry `x` and entry `y`, unless all entries between `x` and `y`
+  are also accessible.
+
+As the database is so simple, ensuring this data consistency isn't the
+great challenge it is in more fully-featured database systems. Care is
+taken to sync chunk data files before writing out chunk metadata
+files, and metadata files are implemented as an append-only log. A
+sensible default can be recovered for the one non-append-only piece of
+metadata (the ID of the oldest visible entry in the database (which,
+due to a `Forget` may be newer than the ID of the oldest entry in the
+database)) if it is corrupted or lost.
+
+If it is impossible to unambiguously and safely open a database, an
+error is returned. Otherwise, automatic recovery is performed. If an
+error occurs, please file a bug report including the error message and
+a description of what was being done to the database when the process
+terminated, as this shouldn't happen without external tampering.
+
+
 Contributing
 ------------
 
