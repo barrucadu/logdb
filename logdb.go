@@ -260,9 +260,6 @@ func (db *LogDB) Sync() error {
 //
 // For an empty database, this will return 0.
 func (db *LogDB) OldestID() uint64 {
-	db.rwlock.RLock()
-	defer db.rwlock.RUnlock()
-
 	return db.oldest
 }
 
