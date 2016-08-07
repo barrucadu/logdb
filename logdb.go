@@ -46,8 +46,14 @@ type LogDB struct {
 	// Chunks, in order.
 	chunks []*chunk
 
-	// Oldest and entry IDs. The db oldest may be > the first chunk oldest if forgetting has happened.
+	// Oldest entry ID. This may be > the first chunk oldest if forgetting has happened.
 	oldest uint64
+
+	// Newest entry ID. This is not a source of internal truth! It is only here to make 'NewestID'
+	// lock-free! This should always be equal to 'db.next() - 1', and is updated in 'AppendEntries',
+	// 'Rollback', and 'Truncate'. It doesn't need to be updated in 'Append', as that calls
+	// 'AppendEntries', or in 'Forget', as that only deletes from the back.
+	newest uint64
 
 	// Data syncing: 'syncEvery' is how many changes (entries appended/truncated) to allow before syncing,
 	// 'sinceLastSync' keeps track of this, and 'syncDirty' is the set of chunks to sync. When syncing,
@@ -102,6 +108,7 @@ func (db *LogDB) Append(entry []byte) error {
 func (db *LogDB) AppendEntries(entries [][]byte) error {
 	db.rwlock.Lock()
 	defer db.rwlock.Unlock()
+	defer func() { db.newest = db.next() - 1 }()
 
 	if db.closed {
 		return ErrClosed
@@ -197,6 +204,7 @@ func (db *LogDB) Forget(newOldestID uint64) error {
 func (db *LogDB) Rollback(newNewestID uint64) error {
 	db.rwlock.Lock()
 	defer db.rwlock.Unlock()
+	defer func() { db.newest = db.next() - 1 }()
 	if db.closed {
 		return ErrClosed
 	}
@@ -211,6 +219,7 @@ func (db *LogDB) Rollback(newNewestID uint64) error {
 func (db *LogDB) Truncate(newOldestID, newNewestID uint64) error {
 	db.rwlock.Lock()
 	defer db.rwlock.Unlock()
+	defer func() { db.newest = db.next() - 1 }()
 	if db.closed {
 		return ErrClosed
 	}
@@ -267,10 +276,7 @@ func (db *LogDB) OldestID() uint64 {
 //
 // For an empty database, this will return 0.
 func (db *LogDB) NewestID() uint64 {
-	db.rwlock.RLock()
-	defer db.rwlock.RUnlock()
-
-	return db.next() - 1
+	return db.newest
 }
 
 // Close synchronises the database to disk and closes all open files. It is an error to try to use a database
@@ -468,7 +474,7 @@ func opendb(path string) (*LogDB, error) {
 		oldest = chunks[0].oldest
 	}
 
-	return &LogDB{
+	db := &LogDB{
 		path:      path,
 		closed:    false,
 		lockfile:  lockfile,
@@ -477,7 +483,10 @@ func opendb(path string) (*LogDB, error) {
 		oldest:    oldest,
 		syncEvery: 100,
 		syncDirty: make(map[*chunk]struct{}),
-	}, nil
+	}
+	db.newest = db.next() - 1
+
+	return db, nil
 }
 
 // Return the 'next' value of the last chunk. Assumes a read lock is held.
