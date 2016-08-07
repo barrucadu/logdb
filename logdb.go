@@ -373,6 +373,7 @@ func opendb(path string) (*LogDB, error) {
 
 	// Get all the chunk files.
 	var chunkFiles []os.FileInfo
+	var metaFiles []os.FileInfo
 	fis, err := ioutil.ReadDir(path)
 	if err != nil {
 		return nil, &ReadError{err}
@@ -382,8 +383,24 @@ func opendb(path string) (*LogDB, error) {
 			chunkFiles = append(chunkFiles, fi)
 		}
 	}
+	for _, fi := range fis {
+		if !fi.IsDir() && isBasenameChunkMetaFile(fi.Name()) {
+			metaFiles = append(metaFiles, fi)
+		}
+	}
 
 	sort.Sort(fileInfoSlice(chunkFiles))
+
+	if len(metaFiles) > 0 {
+		// There may be metadata files without accompanying
+		// data files, if the program died while deleting.
+		// Delete such files.
+		for _, fi := range metaFiles {
+			if _, err := os.Stat(path + "/" + dataFilePath(fi.Name())); err != nil {
+				_ = os.Remove(path + "/" + fi.Name())
+			}
+		}
+	}
 
 	if len(chunkFiles) > 0 {
 		// There may be a gap in the chunk files, if the program died while deleting them. Because

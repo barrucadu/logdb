@@ -492,6 +492,17 @@ func TestGap(t *testing.T) {
 	}
 
 	assertClose(t, assertOpen(t, "gap"))
+
+	for _, dataFile := range []string{"chunk_0_1", "chunk_1_16", "chunk_2_30", "chunk_3_44"} {
+		dataPath := "test_db/gap/" + dataFile
+		metaPath := metaFilePath(dataPath)
+		if _, err := os.Stat(dataPath); err == nil {
+			t.Fatal("expected data file to be gone:", dataPath)
+		}
+		if _, err := os.Stat(metaPath); err == nil {
+			t.Fatal("expected meta file to be gone:", metaPath)
+		}
+	}
 }
 
 /* ***** Syncing */
