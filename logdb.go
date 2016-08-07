@@ -6,6 +6,8 @@ import (
 	"io/ioutil"
 	"os"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -384,18 +386,37 @@ func opendb(path string) (*LogDB, error) {
 	sort.Sort(fileInfoSlice(chunkFiles))
 
 	if len(chunkFiles) > 0 {
+		// There may be a gap in the chunk files, if the program died while deleting them. Because
+		// files are deleted newest-first, the newest contiguous sequence of chunks is what should
+		// be retained; all chunks before a gap can be deleted.
+		first := 0
+		priorCID := uint64(0)
+		for i := len(chunkFiles) - 1; i >= 0; i-- {
+			// This does no validation because isBasenameChunkDataFile took care of that.
+			nameBits := strings.Split(chunkFiles[i].Name(), sep)
+			cid, _ := strconv.ParseUint(nameBits[1], 10, 0)
+
+			// priorCID keeps track of the ID of the prior chunk. Because we're traversing
+			// backwards, these should decrease by 1 every time with no gaps. If there is a gap,
+			// we can enter chunk deleting mode.
+			if priorCID > 0 && cid < priorCID-1 {
+				filePath := path + "/" + chunkFiles[i].Name()
+				metaPath := metaFilePath(filePath)
+				_ = os.Remove(filePath)
+				_ = os.Remove(metaPath)
+			} else {
+				priorCID = cid
+				first = i
+			}
+		}
+		chunkFiles = chunkFiles[first:]
+
+		// The final chunk may be zero-size, if the program died between the file being created and it
+		// being sized. If it is, delete it. Similarly, the final chunk may have no metadata file.
 		final := chunkFiles[len(chunkFiles)-1]
 		filePath := path + "/" + final.Name()
 		metaPath := metaFilePath(filePath)
-
-		if final.Size() == 0 {
-			// The final chunk may be zero-size, if the program died between the file being created
-			// and it being sized. If it is, delete it.
-			_ = os.Remove(filePath)
-			_ = os.Remove(metaPath)
-			chunkFiles = chunkFiles[:len(chunkFiles)-1]
-		} else if _, err := os.Stat(metaPath); err != nil {
-			// Similarly, the final chunk may have no metadata file.
+		if _, err := os.Stat(metaPath); final.Size() == 0 || err != nil {
 			_ = os.Remove(filePath)
 			_ = os.Remove(metaPath)
 			chunkFiles = chunkFiles[:len(chunkFiles)-1]

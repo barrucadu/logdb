@@ -482,6 +482,18 @@ func TestNoOpenMissingMetaNonfinalChunk(t *testing.T) {
 	_ = assertOpenError(t, "no_open_missing_meta_nonfinal_chunk")
 }
 
+func TestGap(t *testing.T) {
+	db := assertCreate(t, "gap", chunkSize)
+	filldb(t, db, numEntries)
+	assertClose(t, db)
+
+	if err := os.Remove("test_db/gap/chunk_3_44"); err != nil {
+		t.Fatal("failed to delete chunk data file:", err)
+	}
+
+	assertClose(t, assertOpen(t, "gap"))
+}
+
 /* ***** Syncing */
 
 func TestDisablePerioidSync(t *testing.T) {
