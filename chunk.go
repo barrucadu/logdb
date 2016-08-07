@@ -56,6 +56,11 @@ func (c *chunk) closeAndRemove() error {
 	return os.Remove(c.metaFilePath())
 }
 
+// Get the data file path associated with a chunk meta file path.
+func dataFilePath(metaFilePath string) string {
+	return strings.TrimSuffix(metaFilePath, sep+metaSuffix)
+}
+
 // Get the meta file path associated with a chunk data file path.
 func metaFilePath(dataFilePath string) string {
 	return dataFilePath + sep + metaSuffix
@@ -100,6 +105,14 @@ func isBasenameChunkDataFile(basename string) bool {
 	}
 
 	return true
+}
+
+// Check if a file basename is a chunk meta file.
+//
+// A valid chunk meta filename consists of a valid chink data filename followed by the meta suffix.
+func isBasenameChunkMetaFile(basename string) bool {
+	suff := sep + metaSuffix
+	return strings.HasSuffix(basename, suff) && isBasenameChunkDataFile(strings.TrimSuffix(basename, suff))
 }
 
 // Given a chunk, get the filename of the next chunk.
