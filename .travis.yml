@@ -11,6 +11,6 @@ install:
   - go get github.com/stretchr/testify/assert
   - go get github.com/mattn/goveralls
   - go get golang.org/x/tools/cmd/cover
-  - $HOME/gopath/bin/goveralls -service=travis-ci -repotoken=$COVERALLS_TOKEN
+  - $HOME/gopath/bin/goveralls -service=travis-ci -repotoken=$COVERALLS_TOKEN || true
 script:
   - go test ./...
