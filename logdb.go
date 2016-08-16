@@ -1,5 +1,5 @@
-// Package logdb provides an efficient log-structured database supporting efficient insertion of new entries,
-// and efficient removal from either end of the log.
+// Package logdb provides an efficient log-structured database supporting efficient insertion of new entries
+// and removal from either end of the log.
 package logdb
 
 import (
