@@ -13,174 +13,232 @@ import (
 
 const numEntries = 255
 
-func TestEmptyIndices(t *testing.T) {
-	db := assertCreate(t, "empty_indices")
-	defer assertClose(t, db)
+var dbTypes = map[string]logdb.LogDB{
+	"chunkdb":           &logdb.ChunkDB{},
+	"lock free chunkdb": &logdb.LockFreeChunkDB{},
+}
 
-	assert.Equal(t, uint64(0), assertFirstIndex(t, db))
-	assert.Equal(t, uint64(0), assertLastIndex(t, db))
+func TestEmptyIndices(t *testing.T) {
+	for dbName, dbType := range dbTypes {
+		t.Logf("Database: %s\n", dbName)
+		func() {
+			db := assertOpen(t, dbType, false, true, "empty_indices")
+			defer assertClose(t, db)
+
+			assert.Equal(t, uint64(0), assertFirstIndex(t, db))
+			assert.Equal(t, uint64(0), assertLastIndex(t, db))
+		}()
+	}
 }
 
 func TestStoreLog(t *testing.T) {
-	db := assertCreate(t, "store_log")
-	defer assertClose(t, db)
+	for dbName, dbType := range dbTypes {
+		t.Logf("Database: %s\n", dbName)
+		func() {
+			db := assertOpen(t, dbType, false, true, "store_log")
+			defer assertClose(t, db)
 
-	logs := make([]*raft.Log, numEntries)
-	for i := 0; i < len(logs); i++ {
-		logs[i] = &raft.Log{
-			Index: uint64(i) + 1,
-			Term:  0,
-			Type:  raft.LogType(i),
-			Data:  []byte(fmt.Sprintf("log entry %v", i)),
-		}
-	}
+			logs := make([]*raft.Log, numEntries)
+			for i := 0; i < len(logs); i++ {
+				logs[i] = &raft.Log{
+					Index: uint64(i) + 1,
+					Term:  0,
+					Type:  raft.LogType(i),
+					Data:  []byte(fmt.Sprintf("log entry %v", i)),
+				}
+			}
 
-	for _, log := range logs {
-		assertStoreLog(t, db, log)
-	}
+			for _, log := range logs {
+				assertStoreLog(t, db, log)
+			}
 
-	assert.Equal(t, uint64(1), assertFirstIndex(t, db))
-	assert.Equal(t, uint64(len(logs)), assertLastIndex(t, db))
+			assert.Equal(t, uint64(1), assertFirstIndex(t, db))
+			assert.Equal(t, uint64(len(logs)), assertLastIndex(t, db))
 
-	for i, log := range logs {
-		l := assertGetLog(t, db, uint64(i+1))
-		assert.Equal(t, *log, *l)
+			for i, log := range logs {
+				l := assertGetLog(t, db, uint64(i+1))
+				assert.Equal(t, *log, *l)
+			}
+		}()
 	}
 }
 
 func TestStoreLogs(t *testing.T) {
-	db := assertCreate(t, "store_logs")
-	defer assertClose(t, db)
+	for dbName, dbType := range dbTypes {
+		t.Logf("Database: %s\n", dbName)
+		func() {
+			db := assertOpen(t, dbType, false, true, "store_logs")
+			defer assertClose(t, db)
 
-	logs := make([]*raft.Log, numEntries)
-	for i := 0; i < len(logs); i++ {
-		logs[i] = &raft.Log{
-			Index: uint64(i) + 1,
-			Term:  0,
-			Type:  raft.LogType(i),
-			Data:  []byte(fmt.Sprintf("log entry %v", i)),
-		}
-	}
+			logs := make([]*raft.Log, numEntries)
+			for i := 0; i < len(logs); i++ {
+				logs[i] = &raft.Log{
+					Index: uint64(i) + 1,
+					Term:  0,
+					Type:  raft.LogType(i),
+					Data:  []byte(fmt.Sprintf("log entry %v", i)),
+				}
+			}
 
-	assertStoreLogs(t, db, logs)
+			assertStoreLogs(t, db, logs)
 
-	assert.Equal(t, uint64(1), assertFirstIndex(t, db))
-	assert.Equal(t, uint64(len(logs)), assertLastIndex(t, db))
+			assert.Equal(t, uint64(1), assertFirstIndex(t, db))
+			assert.Equal(t, uint64(len(logs)), assertLastIndex(t, db))
 
-	for i, log := range logs {
-		l := assertGetLog(t, db, uint64(i+1))
-		assert.Equal(t, *log, *l)
+			for i, log := range logs {
+				l := assertGetLog(t, db, uint64(i+1))
+				assert.Equal(t, *log, *l)
+			}
+		}()
 	}
 }
 
 func TestDeleteRangeFromStart(t *testing.T) {
-	db := assertCreate(t, "delete_range_from_start")
-	defer assertClose(t, db)
+	for dbName, dbType := range dbTypes {
+		t.Logf("Database: %s\n", dbName)
+		func() {
+			db := assertOpen(t, dbType, false, true, "delete_range_from_start")
+			defer assertClose(t, db)
 
-	logs := filldb(t, db)
+			logs := filldb(t, db)
 
-	first := assertFirstIndex(t, db)
-	toDelete := uint64(50)
-	assertDeleteRange(t, db, first, toDelete)
+			first := assertFirstIndex(t, db)
+			toDelete := uint64(50)
+			assertDeleteRange(t, db, first, toDelete)
 
-	assert.Equal(t, first+toDelete, assertFirstIndex(t, db))
+			assert.Equal(t, first+toDelete, assertFirstIndex(t, db))
 
-	for i, log := range logs {
-		index := uint64(i) + 1
-		if index <= toDelete {
-			if err := db.GetLog(index, new(raft.Log)); err == nil {
-				t.Fatal("expected log entry to be missing")
+			for i, log := range logs {
+				index := uint64(i) + 1
+				if index <= toDelete {
+					if err := db.GetLog(index, new(raft.Log)); err == nil {
+						t.Fatal("expected log entry to be missing")
+					}
+				} else {
+					l := assertGetLog(t, db, index)
+					assert.Equal(t, *log, *l)
+				}
 			}
-		} else {
-			l := assertGetLog(t, db, index)
-			assert.Equal(t, *log, *l)
-		}
+		}()
 	}
 }
 
 func TestDeleteRangeFromEnd(t *testing.T) {
-	db := assertCreate(t, "delete_range_from_end")
-	defer assertClose(t, db)
+	for dbName, dbType := range dbTypes {
+		t.Logf("Database: %s\n", dbName)
+		func() {
+			db := assertOpen(t, dbType, false, true, "delete_range_from_end")
+			defer assertClose(t, db)
 
-	logs := filldb(t, db)
+			logs := filldb(t, db)
 
-	last := assertLastIndex(t, db)
-	toDelete := uint64(50)
-	assertDeleteRange(t, db, last-toDelete, last)
+			last := assertLastIndex(t, db)
+			toDelete := uint64(50)
+			assertDeleteRange(t, db, last-toDelete, last)
 
-	assert.Equal(t, last-toDelete-1, assertLastIndex(t, db))
+			assert.Equal(t, last-toDelete-1, assertLastIndex(t, db))
 
-	for i, log := range logs {
-		index := uint64(i) + 1
-		if index >= last-toDelete {
-			if err := db.GetLog(index, new(raft.Log)); err == nil {
-				t.Fatal("expected log entry to be missing ")
+			for i, log := range logs {
+				index := uint64(i) + 1
+				if index >= last-toDelete {
+					if err := db.GetLog(index, new(raft.Log)); err == nil {
+						t.Fatal("expected log entry to be missing ")
+					}
+				} else {
+					l := assertGetLog(t, db, index)
+					assert.Equal(t, *log, *l)
+				}
 			}
-		} else {
-			l := assertGetLog(t, db, index)
-			assert.Equal(t, *log, *l)
-		}
+		}()
 	}
 }
 
 func TestOffset(t *testing.T) {
-	db := assertCreate(t, "offset")
-	defer assertClose(t, db)
+	for dbName, dbType := range dbTypes {
+		t.Logf("Database: %s\n", dbName)
+		func() {
+			db := assertOpen(t, dbType, false, true, "offset")
+			defer assertClose(t, db)
 
-	off := uint64(42)
-	logs := filldboff(t, db, off)
+			off := uint64(42)
+			logs := filldboff(t, db, off)
 
-	for i, log := range logs {
-		l := assertGetLog(t, db, uint64(i)+off)
-		assert.Equal(t, *log, *l)
+			for i, log := range logs {
+				l := assertGetLog(t, db, uint64(i)+off)
+				assert.Equal(t, *log, *l)
+			}
+		}()
 	}
 }
 
 func TestPersistOffset(t *testing.T) {
-	db := assertCreate(t, "persist_offset")
+	for dbName, dbType := range dbTypes {
+		// This test only makes sense for PersistDBs
+		if _, ok := dbType.(logdb.PersistDB); !ok {
+			continue
+		}
 
-	off := uint64(42)
-	logs := filldboff(t, db, off)
+		t.Logf("Database: %s\n", dbName)
+		func() {
+			db := assertOpen(t, dbType, false, true, "persist_offset")
 
-	assertClose(t, db)
-	db2 := assertOpen(t, "persist_offset")
-	defer assertClose(t, db2)
+			off := uint64(42)
+			logs := filldboff(t, db, off)
 
-	for i, log := range logs {
-		l := assertGetLog(t, db2, uint64(i)+off)
-		assert.Equal(t, *log, *l)
+			assertClose(t, db)
+			db2 := assertOpen(t, dbType, false, false, "persist_offset")
+			defer assertClose(t, db2)
+
+			for i, log := range logs {
+				l := assertGetLog(t, db2, uint64(i)+off)
+				assert.Equal(t, *log, *l)
+			}
+		}()
 	}
 }
 
 /// ASSERTIONS
 
-func assertCreate(t testing.TB, testName string) *LogStore {
-	_ = os.RemoveAll("../test_db/raft/" + testName)
-	db, err := logdb.Open("../test_db/raft/"+testName, 1024, true)
-	if err != nil {
-		t.Fatal(err)
+func assertOpen(t testing.TB, dbType logdb.LogDB, forBench bool, create bool, testName string) *LogStore {
+	testDir := "../test_db/raft/" + testName
+	if forBench {
+		testDir = "../test_db/raft-bench/" + testName
 	}
-	ldb, err := New(db)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return ldb
-}
 
-func assertOpen(t testing.TB, testName string) *LogStore {
-	db, err := logdb.Open("../test_db/raft/"+testName, 0, false)
+	if create {
+		_ = os.RemoveAll(testDir)
+	}
+	db, err := logdb.Open(testDir, 1024, create)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ldb, err := New(db)
-	if err != nil {
-		t.Fatal(err)
+
+	var ldb *LogStore
+
+	switch dbType.(type) {
+	case *logdb.ChunkDB:
+		var err error
+		if ldb, err = New(logdb.WrapForConcurrency(db)); err != nil {
+			t.Fatal(err)
+		}
+	case *logdb.LockFreeChunkDB:
+		var err error
+		if ldb, err = New(db); err != nil {
+			t.Fatal(err)
+		}
+	default:
+		t.Fatal("unknown database type: ", dbType)
 	}
+
 	return ldb
 }
 
 func assertClose(t testing.TB, db *LogStore) {
-	if err := db.LogDB.(*logdb.LockFreeChunkDB).Close(); err != nil {
+	closedb, ok := db.LogDB.(logdb.CloseDB)
+	if !ok {
+		return
+	}
+	if err := closedb.Close(); err != nil {
 		t.Fatal(err)
 	}
 }

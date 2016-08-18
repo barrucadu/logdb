@@ -155,7 +155,7 @@ func TestOpenBadSize(t *testing.T) {
 }
 
 func TestOpenBadMetadata(t *testing.T) {
-	db := assertCreate(t, "open_bad_metadata", chunkSize)
+	db := assertOpen(t, dbTypes["lock free chunkdb"], true, "open_bad_metadata", chunkSize)
 	filldb(t, db, numEntries)
 	assertClose(t, db)
 	if err := createFile("test_db/open_bad_metadata/"+initialMetaFile, 3); err != nil {
@@ -178,7 +178,7 @@ func TestOpenMissingMetadata(t *testing.T) {
 }
 
 func TestOpenBadContinuity(t *testing.T) {
-	db := assertCreate(t, "open_bad_continuity", chunkSize)
+	db := assertOpen(t, dbTypes["lock free chunkdb"], true, "open_bad_continuity", chunkSize)
 	filldb(t, db, numEntries)
 	assertClose(t, db)
 

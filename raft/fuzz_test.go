@@ -13,7 +13,7 @@ import (
 
 // Fuzz tester comparing this to hashicorp/raft-boltdb.
 func TestFuzz(t *testing.T) {
-	logdb := assertCreate(t, "fuzz")
+	logdb := assertOpen(t, dbTypes["lock free chunkdb"], false, true, "fuzz")
 	defer assertClose(t, logdb)
 	boltdb := assertCreateBoltStore(t, "fuzz")
 	defer boltdb.Close()

@@ -1,7 +1,6 @@
 package raft
 
 import (
-	"os"
 	"testing"
 
 	"github.com/barrucadu/logdb"
@@ -10,29 +9,58 @@ import (
 	"github.com/hashicorp/raft/bench"
 )
 
-func BenchmarkLogDB_FirstIndex(b *testing.B) {
-	db := assertCreateForBench(b, "first_index")
+// FirstIndex
+
+func BenchmarkLogDB_ChunkDB_FirstIndex(b *testing.B) {
+	db := assertOpen(b, dbTypes["chunkdb"], true, true, "first_index")
 	defer assertClose(b, db)
 
 	raftbench.FirstIndex(b, db)
 }
 
-func BenchmarkLogDB_LastIndex(b *testing.B) {
-	db := assertCreateForBench(b, "last_index")
+func BenchmarkLogDB_LockFreeChunkDB_FirstIndex(b *testing.B) {
+	db := assertOpen(b, dbTypes["lock free chunkdb"], true, true, "first_index")
+	defer assertClose(b, db)
+
+	raftbench.FirstIndex(b, db)
+}
+
+// LastIndex
+
+func BenchmarkLogDB_ChunkDB_LastIndex(b *testing.B) {
+	db := assertOpen(b, dbTypes["chunkdb"], true, true, "last_index")
 	defer assertClose(b, db)
 
 	raftbench.LastIndex(b, db)
 }
 
-func BenchmarkLogDB_GetLog(b *testing.B) {
-	db := assertCreateForBench(b, "get_log")
+func BenchmarkLogDB_LockFreeChunkDB_LastIndex(b *testing.B) {
+	db := assertOpen(b, dbTypes["lock free chunkdb"], true, true, "last_index")
+	defer assertClose(b, db)
+
+	raftbench.LastIndex(b, db)
+}
+
+// GetLog
+
+func BenchmarkLogDB_ChunkDB_GetLog(b *testing.B) {
+	db := assertOpen(b, dbTypes["chunkdb"], true, true, "get_log")
 	defer assertClose(b, db)
 
 	raftbench.GetLog(b, db)
 }
 
-func BenchmarkLogDB_StoreLog(b *testing.B) {
-	db := assertCreateForBench(b, "store_log")
+func BenchmarkLogDB_LockFreeChunkDB_GetLog(b *testing.B) {
+	db := assertOpen(b, dbTypes["lock free chunkdb"], true, true, "get_log")
+	defer assertClose(b, db)
+
+	raftbench.GetLog(b, db)
+}
+
+// StoreLog
+
+func benchStoreLog(b *testing.B, dbType logdb.LogDB) {
+	db := assertOpen(b, dbType, true, true, "store_log")
 	defer assertClose(b, db)
 
 	// raftbench.StoreLog(b, db)
@@ -46,15 +74,34 @@ func BenchmarkLogDB_StoreLog(b *testing.B) {
 	}
 }
 
-func BenchmarkLogDB_StoreLogs(b *testing.B) {
-	db := assertCreateForBench(b, "store_logs")
+func BenchmarkLogDB_ChunkDB_StoreLog(b *testing.B) {
+	benchStoreLog(b, dbTypes["chunkdb"])
+}
+
+func BenchmarkLogDB_LockFreeChunkDB_StoreLog(b *testing.B) {
+	benchStoreLog(b, dbTypes["chunkdb"])
+}
+
+// StoreLogs
+
+func BenchmarkLogDB_ChunkDB_StoreLogs(b *testing.B) {
+	db := assertOpen(b, dbTypes["chunkdb"], true, true, "store_logs")
 	defer assertClose(b, db)
 
 	raftbench.StoreLogs(b, db)
 }
 
-func BenchmarkLogDB_DeleteRange(b *testing.B) {
-	db := assertCreateForBench(b, "delete_range")
+func BenchmarkLogDB_LockFreeChunkDB_StoreLogs(b *testing.B) {
+	db := assertOpen(b, dbTypes["lock free chunkdb"], true, true, "store_logs")
+	defer assertClose(b, db)
+
+	raftbench.StoreLogs(b, db)
+}
+
+// DeleteRange
+
+func benchDeleteRange(b *testing.B, dbType logdb.LogDB) {
+	db := assertOpen(b, dbType, true, true, "delete_range")
 	defer assertClose(b, db)
 
 	// raftbench.DeleteRange(b, db)
@@ -80,17 +127,10 @@ func BenchmarkLogDB_DeleteRange(b *testing.B) {
 	}
 }
 
-/// HELPERS
+func BenchmarkLogDB_ChunkDB_DeleteRange(b *testing.B) {
+	benchDeleteRange(b, dbTypes["chunkdb"])
+}
 
-func assertCreateForBench(b *testing.B, benchName string) *LogStore {
-	_ = os.RemoveAll("../test_db/raft-bench/" + benchName)
-	db, err := logdb.Open("../test_db/raft-bench/"+benchName, 1024*1024, true)
-	if err != nil {
-		b.Fatal(err)
-	}
-	ldb, err := New(db)
-	if err != nil {
-		b.Fatal(err)
-	}
-	return ldb
+func BenchmarkLogDB_LockFreeChunkDB_DeleteRange(b *testing.B) {
+	benchDeleteRange(b, dbTypes["lock free chunkdb"])
 }
