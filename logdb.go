@@ -11,7 +11,8 @@
 // The 'LockFreeChunkDB' and 'ChunkDB' types implement all of these interfaces, and are created with 'Open'
 // and 'WrapForConcurrency' respectively. As the names suggest, the difference is the thread-safety. A
 // 'LockFreeChunkDB' is only safe for single-threaded access, where a 'ChunkDB' wraps it and adds locking, for
-// safe concurrent access.
+// safe concurrent access. Additionally, the 'InMemDB' type implements the 'LogDB' interface using a purely
+// in-memory store.
 package logdb
 
 // A LogDB is a log-structured database.

@@ -16,6 +16,7 @@ const numEntries = 255
 var dbTypes = map[string]logdb.LogDB{
 	"chunkdb":           &logdb.ChunkDB{},
 	"lock free chunkdb": &logdb.LockFreeChunkDB{},
+	"inmem":             &logdb.InMemDB{},
 }
 
 func TestEmptyIndices(t *testing.T) {
@@ -200,6 +201,15 @@ func TestPersistOffset(t *testing.T) {
 /// ASSERTIONS
 
 func assertOpen(t testing.TB, dbType logdb.LogDB, forBench bool, create bool, testName string) *LogStore {
+	// InMemDB has no disk storage (duh)
+	if _, ok := dbType.(*logdb.InMemDB); ok {
+		ldb, err := New(new(logdb.InMemDB))
+		if err != nil {
+			t.Fatal("couldnot create inmem store: ", err)
+		}
+		return ldb
+	}
+
 	testDir := "../test_db/raft/" + testName
 	if forBench {
 		testDir = "../test_db/raft-bench/" + testName

@@ -17,6 +17,7 @@ const (
 var dbTypes = map[string]LogDB{
 	"chunkdb":           &ChunkDB{},
 	"lock free chunkdb": &LockFreeChunkDB{},
+	"inmem":             &InMemDB{},
 }
 
 /* ***** OldestID / NewestID */
@@ -94,6 +95,11 @@ func TestAppendEntries(t *testing.T) {
 
 func TestNoAppendTooBig(t *testing.T) {
 	for dbName, dbType := range dbTypes {
+		// This test only makes sense for BoundedDBs
+		if _, ok := dbType.(BoundedDB); !ok {
+			continue
+		}
+
 		t.Logf("Database: %s\n", dbName)
 		func() {
 			db := assertOpen(t, dbType, true, "no_append_too_big", 1)
@@ -570,6 +576,11 @@ func TestSetSyncSyncs(t *testing.T) {
 
 func TestNoUseClosed(t *testing.T) {
 	for dbName, dbType := range dbTypes {
+		// This test only makes sense for CloseDBs
+		if _, ok := dbType.(CloseDB); !ok {
+			continue
+		}
+
 		t.Logf("Database: %s\n", dbName)
 		func() {
 			db := assertOpen(t, dbType, true, "no_use_closed", chunkSize)
@@ -598,6 +609,11 @@ func TestNoUseClosed(t *testing.T) {
 /// ASSERTIONS
 
 func assertOpen(t *testing.T, dbType LogDB, create bool, testName string, cSize uint32) LogDB {
+	// InMemDB has no disk storage (duh)
+	if _, ok := dbType.(*InMemDB); ok {
+		return new(InMemDB)
+	}
+
 	testDir := "test_db/" + testName
 
 	if create {
