@@ -80,7 +80,7 @@ type PersistDB interface {
 }
 
 // A BoundedDB has a maximum entry size. A 'BoundedDB' which is also a 'LogDB' changes the behaviour of
-// 'Append' and 'AppendEntries': they now return 'ErrTooBig' if an entry appended kis larger than the maximum
+// 'Append' and 'AppendEntries': they now return 'ErrTooBig' if an entry appended is larger than the maximum
 // size.
 type BoundedDB interface {
 	// The maximum size of an entry. It is an error to try to insert an entry larger than this.
