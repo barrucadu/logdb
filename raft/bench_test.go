@@ -11,50 +11,65 @@ import (
 
 // FirstIndex
 
-func BenchmarkLogDB_ChunkDB_FirstIndex(b *testing.B) {
-	db := assertOpen(b, dbTypes["chunkdb"], true, true, "first_index")
+func benchFirstIndex(b *testing.B, dbType logdb.LogDB) {
+	db := assertOpen(b, dbType, true, true, "first_index")
 	defer assertClose(b, db)
 
 	raftbench.FirstIndex(b, db)
 }
 
-func BenchmarkLogDB_LockFreeChunkDB_FirstIndex(b *testing.B) {
-	db := assertOpen(b, dbTypes["lock free chunkdb"], true, true, "first_index")
-	defer assertClose(b, db)
+func BenchmarkLogDB_ChunkDB_FirstIndex(b *testing.B) {
+	benchFirstIndex(b, dbTypes["chunkdb"])
+}
 
-	raftbench.FirstIndex(b, db)
+func BenchmarkLogDB_LockFreeChunkDB_FirstIndex(b *testing.B) {
+	benchFirstIndex(b, dbTypes["lock free chunkdb"])
+}
+
+func BenchmarkLogDB_InMemDB_FirstIndex(b *testing.B) {
+	benchFirstIndex(b, dbTypes["inmem"])
 }
 
 // LastIndex
 
-func BenchmarkLogDB_ChunkDB_LastIndex(b *testing.B) {
-	db := assertOpen(b, dbTypes["chunkdb"], true, true, "last_index")
+func benchLastIndex(b *testing.B, dbType logdb.LogDB) {
+	db := assertOpen(b, dbType, true, true, "last_index")
 	defer assertClose(b, db)
 
 	raftbench.LastIndex(b, db)
 }
 
-func BenchmarkLogDB_LockFreeChunkDB_LastIndex(b *testing.B) {
-	db := assertOpen(b, dbTypes["lock free chunkdb"], true, true, "last_index")
-	defer assertClose(b, db)
+func BenchmarkLogDB_ChunkDB_LastIndex(b *testing.B) {
+	benchLastIndex(b, dbTypes["chunkdb"])
+}
 
-	raftbench.LastIndex(b, db)
+func BenchmarkLogDB_LockFreeChunkDB_LastIndex(b *testing.B) {
+	benchLastIndex(b, dbTypes["lock free chunkdb"])
+}
+
+func BenchmarkLogDB_InMemDB_LastIndex(b *testing.B) {
+	benchLastIndex(b, dbTypes["inmem"])
 }
 
 // GetLog
 
-func BenchmarkLogDB_ChunkDB_GetLog(b *testing.B) {
-	db := assertOpen(b, dbTypes["chunkdb"], true, true, "get_log")
+func benchGetLog(b *testing.B, dbType logdb.LogDB) {
+	db := assertOpen(b, dbType, true, true, "get_log")
 	defer assertClose(b, db)
 
 	raftbench.GetLog(b, db)
 }
 
-func BenchmarkLogDB_LockFreeChunkDB_GetLog(b *testing.B) {
-	db := assertOpen(b, dbTypes["lock free chunkdb"], true, true, "get_log")
-	defer assertClose(b, db)
+func BenchmarkLogDB_ChunkDB_GetLog(b *testing.B) {
+	benchGetLog(b, dbTypes["chunkdb"])
+}
 
-	raftbench.GetLog(b, db)
+func BenchmarkLogDB_LockFreeChunkDB_GetLog(b *testing.B) {
+	benchGetLog(b, dbTypes["lock free chunkdb"])
+}
+
+func BenchmarkLogDB_InMemDB_GetLog(b *testing.B) {
+	benchGetLog(b, dbTypes["inmem"])
 }
 
 // StoreLog
@@ -82,20 +97,29 @@ func BenchmarkLogDB_LockFreeChunkDB_StoreLog(b *testing.B) {
 	benchStoreLog(b, dbTypes["chunkdb"])
 }
 
+func BenchmarkLogDB_InMemDB_StoreLog(b *testing.B) {
+	benchStoreLog(b, dbTypes["inmem"])
+}
+
 // StoreLogs
 
-func BenchmarkLogDB_ChunkDB_StoreLogs(b *testing.B) {
-	db := assertOpen(b, dbTypes["chunkdb"], true, true, "store_logs")
+func benchStoreLogs(b *testing.B, dbType logdb.LogDB) {
+	db := assertOpen(b, dbType, true, true, "store_logs")
 	defer assertClose(b, db)
 
 	raftbench.StoreLogs(b, db)
 }
 
-func BenchmarkLogDB_LockFreeChunkDB_StoreLogs(b *testing.B) {
-	db := assertOpen(b, dbTypes["lock free chunkdb"], true, true, "store_logs")
-	defer assertClose(b, db)
+func BenchmarkLogDB_ChunkDB_StoreLogs(b *testing.B) {
+	benchStoreLogs(b, dbTypes["chunkdb"])
+}
 
-	raftbench.StoreLogs(b, db)
+func BenchmarkLogDB_LockFreeChunkDB_StoreLogs(b *testing.B) {
+	benchStoreLogs(b, dbTypes["lock free chunkdb"])
+}
+
+func BenchmarkLogDB_InMemDB_StoreLogs(b *testing.B) {
+	benchStoreLogs(b, dbTypes["inmem"])
 }
 
 // DeleteRange
@@ -109,8 +133,8 @@ func benchDeleteRange(b *testing.B, dbType logdb.LogDB) {
 	// This is the hashicorp benchmark, modified to not have gaps.
 	var logs []*raft.Log
 	for n := 0; n < b.N; n++ {
-		for i := 0; i < 10; i++ {
-			logs = append(logs, &raft.Log{Index: uint64(n*10 + i + 1), Data: []byte("data")})
+		for i := 0; i < 5; i++ {
+			logs = append(logs, &raft.Log{Index: uint64(n*5 + i + 1), Data: []byte("data")})
 		}
 	}
 	if err := db.StoreLogs(logs); err != nil {
@@ -120,8 +144,8 @@ func benchDeleteRange(b *testing.B, dbType logdb.LogDB) {
 
 	// Delete a range of the data
 	for n := 0; n < b.N; n++ {
-		offset := 10 * n
-		if err := db.DeleteRange(uint64(offset), uint64(offset+9)); err != nil {
+		offset := 5 * n
+		if err := db.DeleteRange(uint64(offset), uint64(offset+4)); err != nil {
 			b.Fatalf("err: %s", err)
 		}
 	}
@@ -133,4 +157,8 @@ func BenchmarkLogDB_ChunkDB_DeleteRange(b *testing.B) {
 
 func BenchmarkLogDB_LockFreeChunkDB_DeleteRange(b *testing.B) {
 	benchDeleteRange(b, dbTypes["lock free chunkdb"])
+}
+
+func BenchmarkLogDB_InMemDB_DeleteRange(b *testing.B) {
+	benchDeleteRange(b, dbTypes["inmem"])
 }
