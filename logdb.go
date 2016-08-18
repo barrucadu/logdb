@@ -1,5 +1,17 @@
 // Package logdb provides an efficient log-structured database supporting efficient insertion of new entries
 // and removal from either end of the log.
+//
+// This provides a number of interfaces and types, and a lot of errors.
+//
+//  - 'LogDB' is the main interface for a log-structured database.
+//  - 'PersistDB' is an interface for databases which can be persisted in some way.
+//  - 'BoundedDB' is an interface for databases with a fixed maximum entry size.
+//  - 'CloseDB' is an interface for databases which can be closed.
+//
+// The 'LockFreeChunkDB' and 'ChunkDB' types implement all of these interfaces, and are created with 'Open'
+// and 'WrapForConcurrency' respectively. As the names suggest, the difference is the thread-safety. A
+// 'LockFreeChunkDB' is only safe for single-threaded access, where a 'ChunkDB' wraps it and adds locking, for
+// safe concurrent access.
 package logdb
 
 // A LogDB is a log-structured database.
