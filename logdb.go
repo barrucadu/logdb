@@ -6,8 +6,7 @@ package logdb
 type LogDB interface {
 	// Append writes a new entry to the log.
 	//
-	// , and 'WriteError' value if the
-	// database files could not be written to.
+	// Returns 'WriteError' value if the database files could not be written to.
 	Append(entry []byte) error
 
 	// AppendEntries atomically writes a collection of new entries to the log.
