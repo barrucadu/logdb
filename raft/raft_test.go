@@ -208,7 +208,7 @@ func assertOpen(t testing.TB, dbType logdb.LogDB, forBench bool, create bool, te
 	if create {
 		_ = os.RemoveAll(testDir)
 	}
-	db, err := logdb.Open(testDir, 1024, create)
+	db, err := logdb.Open(testDir, 1024*1024, create)
 	if err != nil {
 		t.Fatal(err)
 	}
