@@ -79,7 +79,7 @@ func fuzz(path string) {
 			for i := range bs {
 				bs[i] = uint8(rand.Uint32())
 			}
-			if err := db.Append(bs); err != nil {
+			if _, err := db.Append(bs); err != nil {
 				fmt.Printf("[A%v] could not append entry: %s\n", id, err)
 				os.Exit(1)
 			}

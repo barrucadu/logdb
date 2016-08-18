@@ -51,8 +51,9 @@ func TestAppend(t *testing.T) {
 				vs[i] = []byte(fmt.Sprintf("entry-%v", i))
 			}
 
-			for _, v := range vs {
-				assertAppend(t, db, v)
+			for i, v := range vs {
+				idx := assertAppend(t, db, v)
+				assert.Equal(t, uint64(i+1), idx)
 			}
 
 			assert.Equal(t, firstID, db.OldestID())
@@ -78,7 +79,8 @@ func TestAppendEntries(t *testing.T) {
 				vs[i] = []byte(fmt.Sprintf("entry-%v", i))
 			}
 
-			assertAppendEntries(t, db, vs)
+			idx := assertAppendEntries(t, db, vs)
+			assert.Equal(t, uint64(1), idx)
 
 			assert.Equal(t, firstID, db.OldestID())
 			assert.Equal(t, uint64(len(vs)), db.NewestID())
@@ -98,7 +100,8 @@ func TestNoAppendTooBig(t *testing.T) {
 			db := assertOpen(t, dbType, true, "no_append_too_big", 1)
 			defer assertClose(t, db)
 
-			assert.Equal(t, ErrTooBig, db.Append([]byte{1, 2, 3, 4, 5}), "expected Append to fail")
+			_, err := db.Append([]byte{1, 2, 3, 4, 5})
+			assert.Equal(t, ErrTooBig, err, "expected Append to fail")
 		}()
 	}
 }
@@ -573,7 +576,10 @@ func TestNoUseClosed(t *testing.T) {
 			db := assertOpen(t, dbType, true, "no_use_closed", chunkSize)
 			assertClose(t, db)
 
-			assert.Equal(t, ErrClosed, db.Append(nil), "expected Append to fail")
+			_, err := db.Append(nil)
+			assert.Equal(t, ErrClosed, err, "expected Append to fail")
+			_, err = db.Get(0)
+			assert.Equal(t, ErrClosed, err, "expected Get to fail")
 			assert.Equal(t, ErrClosed, db.Forget(0), "expected Forget to fail")
 			assert.Equal(t, ErrClosed, db.Rollback(0), "expected Rollback to fail")
 			assert.Equal(t, ErrClosed, db.Truncate(0, 0), "expected Truncate to fail")
@@ -586,9 +592,6 @@ func TestNoUseClosed(t *testing.T) {
 			if closedb, ok := db.(CloseDB); ok {
 				assert.Equal(t, ErrClosed, closedb.Close(), "expected Close to fail")
 			}
-
-			_, err := db.Get(0)
-			assert.Equal(t, ErrClosed, err, "expected Get to fail")
 		}()
 	}
 }
@@ -794,16 +797,20 @@ func assertClose(t *testing.T, db LogDB) {
 	}
 }
 
-func assertAppend(t *testing.T, db LogDB, entry []byte) {
-	if err := db.Append(entry); err != nil {
+func assertAppend(t *testing.T, db LogDB, entry []byte) uint64 {
+	idx, err := db.Append(entry)
+	if err != nil {
 		t.Fatal(err)
 	}
+	return idx
 }
 
-func assertAppendEntries(t *testing.T, db LogDB, entries [][]byte) {
-	if err := db.AppendEntries(entries); err != nil {
+func assertAppendEntries(t *testing.T, db LogDB, entries [][]byte) uint64 {
+	idx, err := db.AppendEntries(entries)
+	if err != nil {
 		t.Fatal(err)
 	}
+	return idx
 }
 
 func assertGet(t *testing.T, db LogDB, id uint64) []byte {

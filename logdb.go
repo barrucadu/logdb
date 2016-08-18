@@ -16,16 +16,17 @@ package logdb
 
 // A LogDB is a log-structured database.
 type LogDB interface {
-	// Append writes a new entry to the log.
+	// Append writes a new entry to the log and returns its ID.
 	//
 	// Returns 'WriteError' value if the database files could not be written to.
-	Append(entry []byte) error
+	Append(entry []byte) (uint64, error)
 
-	// AppendEntries atomically writes a collection of new entries to the log.
+	// AppendEntries atomically writes a collection of new entries to the log and returns the ID of the
+	// first (the IDs are contiguous).
 	//
 	// Returns the same errors as 'Append', and an 'AtomicityError' value if any entry fails to
 	// append and rolling back the log failed.
-	AppendEntries(entries [][]byte) error
+	AppendEntries(entries [][]byte) (uint64, error)
 
 	// Get looks up an entry by ID.
 	//

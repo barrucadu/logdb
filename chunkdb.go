@@ -112,12 +112,12 @@ func WrapForConcurrency(db *LockFreeChunkDB) *ChunkDB {
 }
 
 // Append implements the 'LogDB', 'PersistDB', 'BoundedDB', and 'CloseDB' interfaces.
-func (db *LockFreeChunkDB) Append(entry []byte) error {
+func (db *LockFreeChunkDB) Append(entry []byte) (uint64, error) {
 	return db.AppendEntries([][]byte{entry})
 }
 
 // AppendEntries implements the 'LogDB', 'PersistDB', 'BoundedDB', and 'CloseDB' interfaces.
-func (db *ChunkDB) AppendEntries(entries [][]byte) error {
+func (db *ChunkDB) AppendEntries(entries [][]byte) (uint64, error) {
 	db.rwlock.Lock()
 	defer db.rwlock.Unlock()
 
@@ -125,11 +125,11 @@ func (db *ChunkDB) AppendEntries(entries [][]byte) error {
 }
 
 // AppendEntries implements the 'LogDB', 'PersistDB', 'BoundedDB', and 'CloseDB' interfaces.
-func (db *LockFreeChunkDB) AppendEntries(entries [][]byte) error {
+func (db *LockFreeChunkDB) AppendEntries(entries [][]byte) (uint64, error) {
 	defer func() { db.newest = db.next() - 1 }()
 
 	if db.closed {
-		return ErrClosed
+		return 0, ErrClosed
 	}
 
 	originalNewest := db.next() - 1
@@ -140,15 +140,15 @@ func (db *LockFreeChunkDB) AppendEntries(entries [][]byte) error {
 			// Rollback on error if we've already appended some entries.
 			if appended {
 				if rerr := db.rollback(originalNewest); rerr != nil {
-					return &AtomicityError{AppendErr: err, RollbackErr: rerr}
+					return 0, &AtomicityError{AppendErr: err, RollbackErr: rerr}
 				}
 			}
-			return err
+			return 0, err
 		}
 		appended = true
 	}
 
-	return db.periodicSync()
+	return originalNewest + 1, db.periodicSync()
 }
 
 // Get implements the 'LogDB' and 'CloseDB' interfaces.

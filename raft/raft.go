@@ -175,7 +175,8 @@ func (l *LogStore) StoreLogs(logs []*raft.Log) error {
 		}
 	}
 
-	return l.LogDB.AppendEntries(bss)
+	_, err = l.LogDB.AppendEntries(bss)
+	return err
 }
 
 // DeleteRange deletes a range of log entries. The range is inclusive.
