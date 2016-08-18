@@ -22,6 +22,20 @@ const latestVersion = uint16(0)
 // interfaces, a 'Sync' is always performed if an entire chunk is forgotten, rolled back, or truncated; or if
 // an append creates a new on-disk chunk.
 type ChunkDB struct {
+	// The underlying 'LockFreeChunkDB'. This is not safe for concurrent use with the 'ChunkDB'.
+	*LockFreeChunkDB
+
+	// Any number of goroutines can read simultaneously, but when entries are added or removed, the write
+	// lock must be held.
+	//
+	// An alternative design point to consider is to have a separate 'RWMutex' in each chunk, and hold only
+	// the necessary write locks. This would complicate locking but allow for more concurrent reading, and
+	// so may be better under some work loads.
+	rwlock sync.RWMutex
+}
+
+// A LockFreeChunkDB is a 'ChunkDB' with no internal locks. It is NOT safe for concurrent use.
+type LockFreeChunkDB struct {
 	// Path to the database directory.
 	path string
 
@@ -31,19 +45,6 @@ type ChunkDB struct {
 
 	// Flag indicating that the handle has been closed. This is used to give 'ErrClosed' errors.
 	closed bool
-
-	// Any number of goroutines can read simultaneously, but when entries are added or removed, the write
-	// lock must be held.
-	//
-	// An alternative design point to consider is to have a separate 'RWMutex' in each chunk, and hold only
-	// the necessary write locks. This would complicate locking but allow for more concurrent reading, and
-	// so may be better under some work loads.
-	rwlock sync.RWMutex
-
-	// Concurrent syncing/reading is safe, but syncing/writing and syncing/syncing is not. To prevent the
-	// first, syncing claims a read lock. To prevent the latter, a special sync lock is used. Claiming a
-	// write lock would also work, but is far more heavyweight.
-	slock sync.Mutex
 
 	// Size of individual chunks. Entries are not split over chunks, and so they cannot be bigger than this.
 	chunkSize uint32
@@ -67,9 +68,16 @@ type ChunkDB struct {
 	syncEvery     int
 	sinceLastSync uint64
 	syncDirty     map[*chunk]struct{}
+
+	// Concurrent syncing/reading is safe, but syncing/writing and syncing/syncing is not. To prevent the
+	// first, syncing claims a read lock. To prevent the latter, a special sync lock is used. Claiming a
+	// write lock would also work, but is far more heavyweight.
+	//
+	// This is inside LockFreeChunkDB because picking it out would be a real pain. TODO: fix :(
+	slock sync.Mutex
 }
 
-// Open a 'ChunkDB' database.
+// Open a 'LockFreeChunkDB' database.
 //
 // It is not possible to have multiple open references to the same database, as the files are locked. Concurrent
 // usage of one open handle in a single process is safe.
@@ -83,7 +91,7 @@ type ChunkDB struct {
 // If the 'create' flag is true and the database doesn't already exist, the database is created using the given
 // chunk size. If the database does exist, the chunk size parameter is ignored, and detected automatically from
 // the chunk files.
-func Open(path string, chunkSize uint32, create bool) (*ChunkDB, error) {
+func Open(path string, chunkSize uint32, create bool) (*LockFreeChunkDB, error) {
 	// Check if it already exists.
 	if stat, _ := os.Stat(path); stat != nil {
 		if !stat.IsDir() {
@@ -97,8 +105,14 @@ func Open(path string, chunkSize uint32, create bool) (*ChunkDB, error) {
 	return nil, ErrPathDoesntExist
 }
 
+// Wrap a 'LockFreeChunkDB' into a 'ChunkDB', which is safe for concurrent use. The underlying
+// 'LockFreeChunkDB' should not be used while the returned 'ChunkDB' is live.
+func WrapForConcurrency(db *LockFreeChunkDB) *ChunkDB {
+	return &ChunkDB{LockFreeChunkDB: db}
+}
+
 // Append implements the 'LogDB', 'PersistDB', 'BoundedDB', and 'CloseDB' interfaces.
-func (db *ChunkDB) Append(entry []byte) error {
+func (db *LockFreeChunkDB) Append(entry []byte) error {
 	return db.AppendEntries([][]byte{entry})
 }
 
@@ -106,6 +120,12 @@ func (db *ChunkDB) Append(entry []byte) error {
 func (db *ChunkDB) AppendEntries(entries [][]byte) error {
 	db.rwlock.Lock()
 	defer db.rwlock.Unlock()
+
+	return db.LockFreeChunkDB.AppendEntries(entries)
+}
+
+// AppendEntries implements the 'LogDB', 'PersistDB', 'BoundedDB', and 'CloseDB' interfaces.
+func (db *LockFreeChunkDB) AppendEntries(entries [][]byte) error {
 	defer func() { db.newest = db.next() - 1 }()
 
 	if db.closed {
@@ -131,11 +151,16 @@ func (db *ChunkDB) AppendEntries(entries [][]byte) error {
 	return db.periodicSync()
 }
 
-// Get implements the 'LogDB' and 'CloseDB' interface.
+// Get implements the 'LogDB' and 'CloseDB' interfaces.
 func (db *ChunkDB) Get(id uint64) ([]byte, error) {
 	db.rwlock.RLock()
 	defer db.rwlock.RUnlock()
 
+	return db.LockFreeChunkDB.Get(id)
+}
+
+// Get implements the 'LogDB' and 'CloseDB' interfaces.
+func (db *LockFreeChunkDB) Get(id uint64) ([]byte, error) {
 	if db.closed {
 		return nil, ErrClosed
 	}
@@ -179,6 +204,12 @@ func (db *ChunkDB) Get(id uint64) ([]byte, error) {
 func (db *ChunkDB) Forget(newOldestID uint64) error {
 	db.rwlock.Lock()
 	defer db.rwlock.Unlock()
+
+	return db.LockFreeChunkDB.Forget(newOldestID)
+}
+
+// Forget implements the 'LogDB', 'PersistDB', and 'CloseDB' interfaces.
+func (db *LockFreeChunkDB) Forget(newOldestID uint64) error {
 	if db.closed {
 		return ErrClosed
 	}
@@ -189,6 +220,12 @@ func (db *ChunkDB) Forget(newOldestID uint64) error {
 func (db *ChunkDB) Rollback(newNewestID uint64) error {
 	db.rwlock.Lock()
 	defer db.rwlock.Unlock()
+
+	return db.LockFreeChunkDB.Rollback(newNewestID)
+}
+
+// Rollback implements the 'LogDB', 'PersistDB', and 'CloseDB' interfaces.
+func (db *LockFreeChunkDB) Rollback(newNewestID uint64) error {
 	defer func() { db.newest = db.next() - 1 }()
 	if db.closed {
 		return ErrClosed
@@ -200,6 +237,12 @@ func (db *ChunkDB) Rollback(newNewestID uint64) error {
 func (db *ChunkDB) Truncate(newOldestID, newNewestID uint64) error {
 	db.rwlock.Lock()
 	defer db.rwlock.Unlock()
+
+	return db.LockFreeChunkDB.Truncate(newOldestID, newNewestID)
+}
+
+// Truncate implements the 'LogDB', 'PersistDB', and 'CloseDB' interfaces.
+func (db *LockFreeChunkDB) Truncate(newOldestID, newNewestID uint64) error {
 	defer func() { db.newest = db.next() - 1 }()
 	if db.closed {
 		return ErrClosed
@@ -214,12 +257,12 @@ func (db *ChunkDB) Truncate(newOldestID, newNewestID uint64) error {
 }
 
 // OldestID implements the 'LogDB' interface.
-func (db *ChunkDB) OldestID() uint64 {
+func (db *LockFreeChunkDB) OldestID() uint64 {
 	return db.oldest
 }
 
 // NewestID implements the 'LogDB' interface.
-func (db *ChunkDB) NewestID() uint64 {
+func (db *LockFreeChunkDB) NewestID() uint64 {
 	return db.newest
 }
 
@@ -236,10 +279,27 @@ func (db *ChunkDB) SetSync(every int) error {
 	return db.periodicSync()
 }
 
+// SetSync implements the 'PersistDB' and 'CloseDB' interface.
+func (db *LockFreeChunkDB) SetSync(every int) error {
+	db.syncEvery = every
+
+	// Immediately perform a periodic sync.
+	if db.closed {
+		return ErrClosed
+	}
+	return db.periodicSync()
+}
+
 // Sync implements the 'PersistDB' and 'CloseDB' interface.
 func (db *ChunkDB) Sync() error {
 	db.rwlock.RLock()
 	defer db.rwlock.RUnlock()
+
+	return db.LockFreeChunkDB.Sync()
+}
+
+// Sync implements the 'PersistDB' and 'CloseDB' interface.
+func (db *LockFreeChunkDB) Sync() error {
 	if db.closed {
 		return ErrClosed
 	}
@@ -247,15 +307,20 @@ func (db *ChunkDB) Sync() error {
 }
 
 // MaxEntrySize implements the 'BoundedDB' interface.
-func (db *ChunkDB) MaxEntrySize() uint64 {
+func (db *LockFreeChunkDB) MaxEntrySize() uint64 {
 	return uint64(db.chunkSize)
 }
 
-// Close implements the 'CloseDB' interface.
+// Close implements the 'CloseDB' interface. This also closes the underlying 'LockFreeChunkDB'.
 func (db *ChunkDB) Close() error {
 	db.rwlock.Lock()
 	defer db.rwlock.Unlock()
 
+	return db.LockFreeChunkDB.Close()
+}
+
+// Close implements the 'CloseDB' interface.
+func (db *LockFreeChunkDB) Close() error {
 	if db.closed {
 		return ErrClosed
 	}
@@ -281,7 +346,7 @@ func (db *ChunkDB) Close() error {
 ////////// HELPERS //////////
 
 // Create a database. It is an error to call this function if the database directory already exists.
-func createdb(path string, chunkSize uint32) (*ChunkDB, error) {
+func createdb(path string, chunkSize uint32) (*LockFreeChunkDB, error) {
 	// Create the directory.
 	if err := os.MkdirAll(path, os.ModeDir|0755); err != nil {
 		return nil, &PathError{err}
@@ -308,7 +373,7 @@ func createdb(path string, chunkSize uint32) (*ChunkDB, error) {
 		return nil, &WriteError{err}
 	}
 
-	return &ChunkDB{
+	return &LockFreeChunkDB{
 		path:      path,
 		closed:    false,
 		lockfile:  lockfile,
@@ -319,7 +384,7 @@ func createdb(path string, chunkSize uint32) (*ChunkDB, error) {
 }
 
 // Open an existing database. It is an error to call this function if the database directory does not exist.
-func opendb(path string) (*ChunkDB, error) {
+func opendb(path string) (*LockFreeChunkDB, error) {
 	// Read the "version" file.
 	var version uint16
 	if err := readFile(path+"/version", &version); err != nil {
@@ -443,7 +508,7 @@ func opendb(path string) (*ChunkDB, error) {
 		oldest = chunks[0].oldest
 	}
 
-	db := &ChunkDB{
+	db := &LockFreeChunkDB{
 		path:      path,
 		closed:    false,
 		lockfile:  lockfile,
@@ -459,7 +524,7 @@ func opendb(path string) (*ChunkDB, error) {
 }
 
 // Return the 'next' value of the last chunk. Assumes a read lock is held.
-func (db *ChunkDB) next() uint64 {
+func (db *LockFreeChunkDB) next() uint64 {
 	if len(db.chunks) == 0 {
 		return 1
 	}
@@ -468,7 +533,7 @@ func (db *ChunkDB) next() uint64 {
 
 // Append an entry to the database, creating a new chunk if necessary, and incrementing the dirty counter.
 // Assumes a write lock is held.
-func (db *ChunkDB) append(entry []byte) error {
+func (db *LockFreeChunkDB) append(entry []byte) error {
 	if uint32(len(entry)) > db.chunkSize {
 		return ErrTooBig
 	}
@@ -519,7 +584,7 @@ func (db *ChunkDB) append(entry []byte) error {
 //
 // A chunk cannot be empty, so it is only valid to call this if an entry is going to be inserted into the chunk
 // immediately.
-func (db *ChunkDB) newChunk() error {
+func (db *LockFreeChunkDB) newChunk() error {
 	// As the chunk oldest ID is stored in the filename, we need to sync the prior chunk before creating the
 	// new one. Otherwise if the process dies before the next sync, there will be a chunk ID discontinuity.
 	if len(db.chunks) > 0 {
@@ -560,7 +625,7 @@ func (db *ChunkDB) newChunk() error {
 }
 
 // Remove entries from the beginning of the log, performing a sync if necessary. Assumes a write lock is held.
-func (db *ChunkDB) forget(newOldestID uint64) error {
+func (db *LockFreeChunkDB) forget(newOldestID uint64) error {
 	if newOldestID < db.oldest {
 		return nil
 	}
@@ -593,7 +658,7 @@ func (db *ChunkDB) forget(newOldestID uint64) error {
 }
 
 // Remove entries from the end of the log, performing a sync if necessary. Assumes a write lock is held.
-func (db *ChunkDB) rollback(newNewestID uint64) error {
+func (db *LockFreeChunkDB) rollback(newNewestID uint64) error {
 	newNextID := newNewestID + 1
 
 	if newNextID > db.next() {
@@ -639,7 +704,7 @@ func (db *ChunkDB) rollback(newNewestID uint64) error {
 }
 
 // Perform a sync only if needed. Assumes a lock (read or write) is held.
-func (db *ChunkDB) periodicSync() error {
+func (db *LockFreeChunkDB) periodicSync() error {
 	if db.syncEvery >= 0 && db.sinceLastSync > uint64(db.syncEvery) {
 		return db.sync()
 	}
@@ -647,7 +712,8 @@ func (db *ChunkDB) periodicSync() error {
 }
 
 // Perform a sync immediately. Assumes a lock (read or write) is held.
-func (db *ChunkDB) sync() error {
+func (db *LockFreeChunkDB) sync() error {
+	// Suboptimal!
 	db.slock.Lock()
 	defer db.slock.Unlock()
 
@@ -695,7 +761,7 @@ func (db *ChunkDB) sync() error {
 //
 // This does not update the sinceLastSync parameter, so the next sync will be slightly too early (which
 // shouldn't be a problem for correctness, but isn't so great for performance).
-func (db *ChunkDB) syncOne(c *chunk) error {
+func (db *LockFreeChunkDB) syncOne(c *chunk) error {
 	_, ok := db.syncDirty[c]
 	if !ok {
 		return nil

@@ -61,7 +61,8 @@ func dump(path string) {
 }
 
 func fuzz(path string) {
-	db, err := logdb.Open(path, 1024, true)
+	lfdb, err := logdb.Open(path, 1024, true)
+	db := logdb.WrapForConcurrency(lfdb)
 	if err != nil {
 		fmt.Printf("could not open database in %s: %s\n", path, err)
 		os.Exit(1)

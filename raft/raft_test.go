@@ -180,7 +180,7 @@ func assertOpen(t testing.TB, testName string) *LogStore {
 }
 
 func assertClose(t testing.TB, db *LogStore) {
-	if err := db.LogDB.(*logdb.ChunkDB).Close(); err != nil {
+	if err := db.LogDB.(*logdb.LockFreeChunkDB).Close(); err != nil {
 		t.Fatal(err)
 	}
 }

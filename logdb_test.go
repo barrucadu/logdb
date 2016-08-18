@@ -579,7 +579,7 @@ func assertCreate(t *testing.T, testName string, cSize uint32) *ChunkDB {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return db
+	return WrapForConcurrency(db)
 }
 
 func assertCreateError(t *testing.T, testName string) error {
@@ -595,7 +595,7 @@ func assertOpen(t *testing.T, testName string) *ChunkDB {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return db
+	return WrapForConcurrency(db)
 }
 
 func assertOpenError(t *testing.T, testName string) error {
