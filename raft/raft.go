@@ -1,4 +1,4 @@
-// Package raft provides a wrapper making a 'LogDB' instance appropriate for use as a 'LogStore' for the
+// Package raft provides a wrapper making a 'LogDB' appropriate for use as a 'LogStore' for the
 // github.com/hashicorp/raft library.
 package raft
 
@@ -44,8 +44,9 @@ func (e *NoncontiguousIndexError) Error() string {
 
 // LogStore is implements the hashicorp/raft 'LogStore' interface, with the backing store being a 'LogDB'.
 type LogStore struct {
-	// Reference to the underlying log store.
-	store *logdb.LogDB
+	// Reference to the underlying log database. It is assumed that the 'LogStore' is the only user of
+	// this 'LogDB'.
+	logdb.LogDB
 
 	// Codec for encoding/decoding log entries.
 	handle codec.Handle
@@ -62,11 +63,14 @@ type LogStore struct {
 
 // New creates a 'LogStore' backed by the given 'LogDB'. Log entries are encoded with messagepack.
 //
+// The returned 'LogStore' assumes that it is the only user of the underlying 'LogDB', if this assumption does
+// not hold then inconsistent results may arise.
+//
 // If an error is returned, the log store could not be read. This shouldn't happen if it was opened
 // successfully, but you never know.
-func New(store *logdb.LogDB) (*LogStore, error) {
+func New(db logdb.LogDB) (*LogStore, error) {
 	l := LogStore{
-		store:  store,
+		LogDB:  db,
 		empty:  true,
 		rwlock: new(sync.RWMutex),
 	}
@@ -76,7 +80,7 @@ func New(store *logdb.LogDB) (*LogStore, error) {
 	h.InternString = true
 	l.handle = h
 
-	oldest := store.OldestID()
+	oldest := db.OldestID()
 	if oldest > 0 {
 		// This works by conflating database and raft IDs, and won't work once the offset is set.
 		var log raft.Log
@@ -97,7 +101,7 @@ func (l *LogStore) FirstIndex() (uint64, error) {
 	l.rwlock.RLock()
 	defer l.rwlock.RUnlock()
 
-	return l.store.OldestID() + l.offset, nil
+	return l.LogDB.OldestID() + l.offset, nil
 }
 
 // LastIndex returns the last index written. 0 for no entries.
@@ -105,7 +109,7 @@ func (l *LogStore) LastIndex() (uint64, error) {
 	l.rwlock.RLock()
 	defer l.rwlock.RUnlock()
 
-	return l.store.NewestID() + l.offset, nil
+	return l.LogDB.NewestID() + l.offset, nil
 }
 
 // GetLog gets a log entry at a given index.
@@ -117,7 +121,7 @@ func (l *LogStore) GetLog(index uint64, log *raft.Log) error {
 		return raft.ErrLogNotFound
 	}
 
-	bs, err := l.store.Get(index - l.offset)
+	bs, err := l.LogDB.Get(index - l.offset)
 	if err != nil {
 		return raft.ErrLogNotFound
 	}
@@ -148,7 +152,7 @@ func (l *LogStore) StoreLogs(logs []*raft.Log) error {
 		l.isOffset = true
 	}
 
-	last := l.store.NewestID() + l.offset
+	last := l.LogDB.NewestID() + l.offset
 
 	bss := make([][]byte, len(logs))
 	var err error
@@ -171,7 +175,7 @@ func (l *LogStore) StoreLogs(logs []*raft.Log) error {
 		}
 	}
 
-	return l.store.AppendEntries(bss)
+	return l.LogDB.AppendEntries(bss)
 }
 
 // DeleteRange deletes a range of log entries. The range is inclusive.
@@ -182,26 +186,21 @@ func (l *LogStore) DeleteRange(min, max uint64) error {
 	l.rwlock.Lock()
 	defer l.rwlock.Unlock()
 
-	first := l.store.OldestID() + l.offset
-	last := l.store.NewestID() + l.offset
+	first := l.LogDB.OldestID() + l.offset
+	last := l.LogDB.NewestID() + l.offset
 
 	if min <= first && max >= last {
-		if err := l.store.Rollback(l.store.OldestID()); err != nil {
+		if err := l.LogDB.Rollback(l.LogDB.OldestID()); err != nil {
 			return err
 		}
 		return nil
 	} else if min <= first {
-		return l.store.Forget(max - l.offset + 1)
+		return l.LogDB.Forget(max - l.offset + 1)
 	} else if max >= last {
-		return l.store.Rollback(min - l.offset - 1)
+		return l.LogDB.Rollback(min - l.offset - 1)
 	}
 
 	return ErrDeleteRange
-}
-
-// Close the underlying database. It is not safe to use the 'LogStore' for anything else after doing this.
-func (l *LogStore) Close() error {
-	return l.store.Close()
 }
 
 // Encode a log entry using messagepack.

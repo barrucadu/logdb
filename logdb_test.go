@@ -573,7 +573,7 @@ func TestNoUseClosed(t *testing.T) {
 
 /// ASSERTIONS
 
-func assertCreate(t *testing.T, testName string, cSize uint32) *LogDB {
+func assertCreate(t *testing.T, testName string, cSize uint32) *ChunkDB {
 	_ = os.RemoveAll("test_db/" + testName)
 	db, err := Open("test_db/"+testName, cSize, true)
 	if err != nil {
@@ -590,7 +590,7 @@ func assertCreateError(t *testing.T, testName string) error {
 	return err
 }
 
-func assertOpen(t *testing.T, testName string) *LogDB {
+func assertOpen(t *testing.T, testName string) *ChunkDB {
 	db, err := Open("test_db/"+testName, 0, false)
 	if err != nil {
 		t.Fatal(err)
@@ -606,25 +606,25 @@ func assertOpenError(t *testing.T, testName string) error {
 	return err
 }
 
-func assertClose(t *testing.T, db *LogDB) {
+func assertClose(t *testing.T, db *ChunkDB) {
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func assertAppend(t *testing.T, db *LogDB, entry []byte) {
+func assertAppend(t *testing.T, db *ChunkDB, entry []byte) {
 	if err := db.Append(entry); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func assertAppendEntries(t *testing.T, db *LogDB, entries [][]byte) {
+func assertAppendEntries(t *testing.T, db *ChunkDB, entries [][]byte) {
 	if err := db.AppendEntries(entries); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func assertGet(t *testing.T, db *LogDB, id uint64) []byte {
+func assertGet(t *testing.T, db *ChunkDB, id uint64) []byte {
 	b, err := db.Get(id)
 	if err != nil {
 		t.Fatal(err)
@@ -632,13 +632,13 @@ func assertGet(t *testing.T, db *LogDB, id uint64) []byte {
 	return b
 }
 
-func assertForget(t *testing.T, db *LogDB, newOldestID uint64) {
+func assertForget(t *testing.T, db *ChunkDB, newOldestID uint64) {
 	if err := db.Forget(newOldestID); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func assertForgetError(t *testing.T, db *LogDB, newOldestID uint64) error {
+func assertForgetError(t *testing.T, db *ChunkDB, newOldestID uint64) error {
 	err := db.Forget(newOldestID)
 	if err == nil {
 		t.Fatal("should not be able to forget")
@@ -646,13 +646,13 @@ func assertForgetError(t *testing.T, db *LogDB, newOldestID uint64) error {
 	return err
 }
 
-func assertRollback(t *testing.T, db *LogDB, newNewestID uint64) {
+func assertRollback(t *testing.T, db *ChunkDB, newNewestID uint64) {
 	if err := db.Rollback(newNewestID); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func assertRollbackError(t *testing.T, db *LogDB, newNewestID uint64) error {
+func assertRollbackError(t *testing.T, db *ChunkDB, newNewestID uint64) error {
 	err := db.Rollback(newNewestID)
 	if err == nil {
 		t.Fatal("should not be able to rollback")
@@ -660,13 +660,13 @@ func assertRollbackError(t *testing.T, db *LogDB, newNewestID uint64) error {
 	return err
 }
 
-func assertTruncate(t *testing.T, db *LogDB, newOldestID, newNewestID uint64) {
+func assertTruncate(t *testing.T, db *ChunkDB, newOldestID, newNewestID uint64) {
 	if err := db.Truncate(newOldestID, newNewestID); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func assertTruncateError(t *testing.T, db *LogDB, newOldestID, newNewestID uint64) error {
+func assertTruncateError(t *testing.T, db *ChunkDB, newOldestID, newNewestID uint64) error {
 	err := db.Truncate(newOldestID, newNewestID)
 	if err == nil {
 		t.Fatal("should not be able to truncate")
@@ -674,13 +674,13 @@ func assertTruncateError(t *testing.T, db *LogDB, newOldestID, newNewestID uint6
 	return err
 }
 
-func assertSetSync(t *testing.T, db *LogDB, every int) {
+func assertSetSync(t *testing.T, db *ChunkDB, every int) {
 	if err := db.SetSync(every); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func assertSync(t *testing.T, db *LogDB) {
+func assertSync(t *testing.T, db *ChunkDB) {
 	if err := db.Sync(); err != nil {
 		t.Fatal(err)
 	}
@@ -688,7 +688,7 @@ func assertSync(t *testing.T, db *LogDB) {
 
 /// HELPERS
 
-func filldb(t *testing.T, db *LogDB, num int) [][]byte {
+func filldb(t *testing.T, db *ChunkDB, num int) [][]byte {
 	vs := make([][]byte, num)
 	for i := 0; i < num; i++ {
 		vs[i] = []byte(fmt.Sprintf("entry-%v", i))

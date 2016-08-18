@@ -72,7 +72,7 @@ func fuzz(path string) {
 		os.Exit(1)
 	}
 
-	appender := func(id int, db *logdb.LogDB) {
+	appender := func(id int, db *logdb.ChunkDB) {
 		for {
 			bs := make([]byte, rand.Intn(255))
 			for i := range bs {
@@ -86,7 +86,7 @@ func fuzz(path string) {
 		}
 	}
 
-	truncater := func(id int, db *logdb.LogDB) {
+	truncater := func(id int, db *logdb.ChunkDB) {
 		for {
 			oldest := db.OldestID()
 			newest := db.NewestID()
@@ -105,7 +105,7 @@ func fuzz(path string) {
 		}
 	}
 
-	syncer := func(id int, db *logdb.LogDB) {
+	syncer := func(id int, db *logdb.ChunkDB) {
 		for {
 			if err := db.Sync(); err != nil {
 				fmt.Printf("[S%v] could not sync: %s\n", id, err)
