@@ -9,6 +9,12 @@ import (
 	"github.com/hashicorp/raft/bench"
 )
 
+var dbTypes = map[string]logdb.LogDB{
+	"chunkdb":           &logdb.ChunkDB{},
+	"lock free chunkdb": &logdb.LockFreeChunkDB{},
+	"inmem":             &logdb.InMemDB{},
+}
+
 // FirstIndex
 
 func benchFirstIndex(b *testing.B, dbType logdb.LogDB) {
