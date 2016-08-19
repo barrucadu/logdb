@@ -3,6 +3,7 @@ package logdb
 import (
 	"compress/flate"
 	"compress/lzw"
+	"encoding/binary"
 	"fmt"
 	"testing"
 
@@ -13,6 +14,8 @@ var coderTypes = map[string]func() *CodingDB{
 	"id":      func() *CodingDB { return IdentityCoder(&InMemDB{}) },
 	"deflate": func() *CodingDB { db, _ := CompressDEFLATE(&InMemDB{}, flate.BestCompression); return db },
 	"lzw":     func() *CodingDB { return CompressLZW(&InMemDB{}, lzw.LSB, 8) },
+	"binary":  func() *CodingDB { return BinaryCoder(&InMemDB{}, binary.LittleEndian) },
+	"gob":     func() *CodingDB { return GobCoder(&InMemDB{}) },
 }
 
 func TestAppendValue(t *testing.T) {
@@ -31,7 +34,12 @@ func TestAppendValue(t *testing.T) {
 			assert.Equal(t, uint64(i+1), idx, "expected equal ID")
 
 			v := make([]byte, len(bs))
-			err = coder.GetValue(idx, v)
+			// Gob is slightly special
+			if coderName == "gob" {
+				err = coder.GetValue(idx, &v)
+			} else {
+				err = coder.GetValue(idx, v)
+			}
 			assert.Nil(t, err, "expected no error in get")
 			assert.Equal(t, bs, v, "expected equal '[]byte' values")
 		}
@@ -54,7 +62,12 @@ func TestAppendValues(t *testing.T) {
 
 		for i, bs := range bss {
 			v := make([]byte, len(bs))
-			err := coder.GetValue(uint64(i+1), v)
+			// Gob is slightly special
+			if coderName == "gob" {
+				err = coder.GetValue(uint64(i+1), &v)
+			} else {
+				err = coder.GetValue(uint64(i+1), v)
+			}
 			assert.Nil(t, err, "expected no error in get")
 			assert.Equal(t, bs, v, "expected equal '[]byte' values")
 		}

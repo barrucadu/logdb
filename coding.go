@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"compress/flate"
 	"compress/lzw"
+	"encoding/binary"
+	"encoding/gob"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -43,6 +45,40 @@ func IdentityCoder(logdb LogDB) *CodingDB {
 			}
 			copy(outSlice, bs)
 			return nil
+		},
+	}
+}
+
+// BinaryCoder creates a 'CodingDB' with the binary encoder/decoder. Values must be valid input for the
+// 'binary.Write' function.
+func BinaryCoder(logdb LogDB, byteOrder binary.ByteOrder) *CodingDB {
+	return &CodingDB{
+		LogDB: logdb,
+		Encode: func(val interface{}) ([]byte, error) {
+			buf := new(bytes.Buffer)
+			err := binary.Write(buf, byteOrder, val)
+			return buf.Bytes(), err
+		},
+		Decode: func(bs []byte, data interface{}) error {
+			return binary.Read(bytes.NewReader(bs), byteOrder, data)
+		},
+	}
+}
+
+// GobCoder creates a 'CodingDB' with the gob encoder/decoder. Values must be valid input for the 'god.Encode'
+// function.
+func GobCoder(logdb LogDB) *CodingDB {
+	return &CodingDB{
+		LogDB: logdb,
+		Encode: func(val interface{}) ([]byte, error) {
+			buf := new(bytes.Buffer)
+			enc := gob.NewEncoder(buf)
+			err := enc.Encode(val)
+			return buf.Bytes(), err
+		},
+		Decode: func(bs []byte, data interface{}) error {
+			dec := gob.NewDecoder(bytes.NewReader(bs))
+			return dec.Decode(data)
 		},
 	}
 }
