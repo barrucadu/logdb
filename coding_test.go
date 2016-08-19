@@ -10,17 +10,9 @@ import (
 )
 
 var coderTypes = map[string]func() *CodingDB{
-	"id": func() *CodingDB { return NewIdentityCoder(&InMemDB{}) },
-	"deflate": func() *CodingDB {
-		c := NewIdentityCoder(&InMemDB{})
-		c.CompressDEFLATE(flate.BestCompression)
-		return c
-	},
-	"lzw": func() *CodingDB {
-		c := NewIdentityCoder(&InMemDB{})
-		c.CompressLZW(lzw.LSB, 8)
-		return c
-	},
+	"id":      func() *CodingDB { return IdentityCoder(&InMemDB{}) },
+	"deflate": func() *CodingDB { db, _ := CompressDEFLATE(&InMemDB{}, flate.BestCompression); return db },
+	"lzw":     func() *CodingDB { return CompressLZW(&InMemDB{}, lzw.LSB, 8) },
 }
 
 func TestAppendValue(t *testing.T) {

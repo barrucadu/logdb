@@ -22,9 +22,9 @@ type CodingDB struct {
 	Decode func([]byte) (interface{}, error)
 }
 
-// NewIdentityCoder creates a 'CodingDB' with the identity encoder/decoder. It is an error to append a value
+// IdentityCoder creates a 'CodingDB' with the identity encoder/decoder. It is an error to append a value
 // which is not a '[]byte'.
-func NewIdentityCoder(logdb LogDB) *CodingDB {
+func IdentityCoder(logdb LogDB) *CodingDB {
 	return &CodingDB{
 		LogDB: logdb,
 		Encode: func(val interface{}) ([]byte, error) {
@@ -39,6 +39,65 @@ func NewIdentityCoder(logdb LogDB) *CodingDB {
 			return interface{}(bs), nil
 		},
 	}
+}
+
+// CompressDEFLATE creates a 'CodingDB' with DEFLATE compression at the given level.
+//
+// Returns an error if the level is < -2 or > 9.
+func CompressDEFLATE(logdb LogDB, level int) (*CodingDB, error) {
+	if level < -2 || level > 9 {
+		return nil, errors.New("flate compression level must be in the range [-2,9]")
+	}
+	db := IdentityCoder(logdb)
+	db.Augment(
+		func(bs []byte) ([]byte, error) {
+			buf := new(bytes.Buffer)
+			w, _ := flate.NewWriter(buf, level)
+			n, err := w.Write(bs)
+			if err != nil {
+				return nil, err
+			}
+			if n < len(bs) {
+				return nil, errors.New("could not compress all bytes")
+			}
+			w.Close()
+			return buf.Bytes(), nil
+		},
+		func(bs []byte) ([]byte, error) {
+			r := flate.NewReader(bytes.NewReader(bs))
+			bs, err := ioutil.ReadAll(r)
+			r.Close()
+			return bs, err
+		},
+	)
+	return db, nil
+}
+
+// CompressLZW creates a 'CodingDB' with LZW compression at the given level.
+func CompressLZW(logdb LogDB, order lzw.Order, litWidth int) *CodingDB {
+	db := IdentityCoder(logdb)
+	db.Augment(
+		func(bs []byte) ([]byte, error) {
+			buf := new(bytes.Buffer)
+			w := lzw.NewWriter(buf, order, litWidth)
+			n, err := w.Write(bs)
+			if err != nil {
+				return nil, err
+			}
+			if n < len(bs) {
+				return nil, errors.New("could not compress all bytes")
+			}
+			w.Close()
+			return buf.Bytes(), nil
+		},
+		func(bs []byte) ([]byte, error) {
+			r := lzw.NewReader(bytes.NewReader(bs), order, litWidth)
+			bs, err := ioutil.ReadAll(r)
+			r.Close()
+			return bs, err
+		},
+	)
+	return db
 }
 
 // Augment modifies the 'Encode' and 'Decode' functions of a 'CodingDB' by post- and pre-composing with the
@@ -67,62 +126,6 @@ func (db *CodingDB) Augment(
 		}
 		return oldDecode(bs2)
 	}
-}
-
-// CompressDEFLATE augments a 'CodingDB' with DEFLATE compression at the given level.
-//
-// Returns an error if the level is < -2 or > 9.
-func (db *CodingDB) CompressDEFLATE(level int) error {
-	if level < -2 || level > 9 {
-		return errors.New("flate compression level must be in the range [-2,9]")
-	}
-	db.Augment(
-		func(bs []byte) ([]byte, error) {
-			buf := new(bytes.Buffer)
-			w, _ := flate.NewWriter(buf, level)
-			n, err := w.Write(bs)
-			if err != nil {
-				return nil, err
-			}
-			if n < len(bs) {
-				return nil, errors.New("could not compress all bytes")
-			}
-			w.Close()
-			return buf.Bytes(), nil
-		},
-		func(bs []byte) ([]byte, error) {
-			r := flate.NewReader(bytes.NewReader(bs))
-			bs, err := ioutil.ReadAll(r)
-			r.Close()
-			return bs, err
-		},
-	)
-	return nil
-}
-
-// CompressLZW augments a 'CodingDB' with LZW compression at the given level.
-func (db *CodingDB) CompressLZW(order lzw.Order, litWidth int) {
-	db.Augment(
-		func(bs []byte) ([]byte, error) {
-			buf := new(bytes.Buffer)
-			w := lzw.NewWriter(buf, order, litWidth)
-			n, err := w.Write(bs)
-			if err != nil {
-				return nil, err
-			}
-			if n < len(bs) {
-				return nil, errors.New("could not compress all bytes")
-			}
-			w.Close()
-			return buf.Bytes(), nil
-		},
-		func(bs []byte) ([]byte, error) {
-			r := lzw.NewReader(bytes.NewReader(bs), order, litWidth)
-			bs, err := ioutil.ReadAll(r)
-			r.Close()
-			return bs, err
-		},
-	)
 }
 
 // AppendValue encodes a value using the encoder, and stores it in the underlying 'LogDB' is there is no
