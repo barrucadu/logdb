@@ -1,16 +1,17 @@
 language: go
+
 go:
   - 1.5
   - 1.6
   - 1.7
-install:
-  - go get github.com/hashicorp/raft
-  - go get github.com/ugorji/go/codec
-  - go get github.com/hashicorp/errwrap
-  - go get github.com/hashicorp/raft-boltdb
-  - go get github.com/stretchr/testify/assert
-  - go get github.com/mattn/goveralls
+
+before_install:
   - go get golang.org/x/tools/cmd/cover
-  - $HOME/gopath/bin/goveralls -service=travis-ci -repotoken=$COVERALLS_TOKEN || true
+  - go get github.com/mattn/goveralls
+
 script:
-  - go test ./...
+  - go get -d -t -v ./...
+  - go build -v ./...
+  - go test -v ./...
+  - diff <(gofmt -d .) <("")
+  - if [[ $TRAVIS_SECURE_ENV_VARS = "true" ]]; then bash ./.travis/test-coverage.sh; fi
