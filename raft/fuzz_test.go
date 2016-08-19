@@ -50,8 +50,6 @@ func fuzzLogStore(spec raft.LogStore, test raft.LogStore, rand *rand.Rand, maxop
 			}
 			idx := uint64(index)
 
-			fmt.Printf("-> calling GetLog %v\n", idx)
-
 			specLog := new(raft.Log)
 			specErr := spec.GetLog(idx, specLog)
 			testLog := new(raft.Log)
@@ -72,8 +70,6 @@ func fuzzLogStore(spec raft.LogStore, test raft.LogStore, rand *rand.Rand, maxop
 			specErr := spec.StoreLog(&lastLog)
 			testErr := test.StoreLog(&lastLog)
 
-			fmt.Printf("-> calling StoreLog %v\n", lastLog)
-
 			if !compareErrors(specErr, testErr) {
 				return notExpected("StoreLog", "error values inconsistent", specErr, testErr)
 			}
@@ -85,8 +81,6 @@ func fuzzLogStore(spec raft.LogStore, test raft.LogStore, rand *rand.Rand, maxop
 				logsV[i] = lastLog
 				logs[i] = &logsV[i]
 			}
-
-			fmt.Printf("-> calling StoreLogs %v\n", logsV)
 
 			specErr := spec.StoreLogs(logs)
 			testErr := test.StoreLogs(logs)
@@ -108,8 +102,6 @@ func fuzzLogStore(spec raft.LogStore, test raft.LogStore, rand *rand.Rand, maxop
 					last -= uint64(rand.Int63n(int64(last - first)))
 				}
 			}
-
-			fmt.Printf("-> calling DeleteRange %v %v\n", first, last)
 
 			specErr := spec.DeleteRange(first, last)
 			testErr := test.DeleteRange(first, last)
