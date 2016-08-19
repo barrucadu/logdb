@@ -30,11 +30,10 @@ func TestAppendValue(t *testing.T) {
 			assert.Nil(t, err, "expected no error in append")
 			assert.Equal(t, uint64(i+1), idx, "expected equal ID")
 
-			v, err := coder.GetValue(idx)
+			v := make([]byte, len(bs))
+			err = coder.GetValue(idx, v)
 			assert.Nil(t, err, "expected no error in get")
-			vbs, ok := v.([]byte)
-			assert.True(t, ok, "exected '[]byte' result")
-			assert.Equal(t, bs, vbs, "expected equal '[]byte' values")
+			assert.Equal(t, bs, v, "expected equal '[]byte' values")
 		}
 	}
 }
@@ -54,11 +53,10 @@ func TestAppendValues(t *testing.T) {
 		assert.Equal(t, uint64(1), idx, "expected first ID")
 
 		for i, bs := range bss {
-			v, err := coder.GetValue(uint64(i + 1))
+			v := make([]byte, len(bs))
+			err := coder.GetValue(uint64(i+1), v)
 			assert.Nil(t, err, "expected no error in get")
-			vbs, ok := v.([]byte)
-			assert.True(t, ok, "exected '[]byte' result")
-			assert.Equal(t, bs, vbs, "expected equal '[]byte' values")
+			assert.Equal(t, bs, v, "expected equal '[]byte' values")
 		}
 	}
 }

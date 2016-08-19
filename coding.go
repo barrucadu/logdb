@@ -19,7 +19,7 @@ type CodingDB struct {
 	LogDB
 
 	Encode func(interface{}) ([]byte, error)
-	Decode func([]byte) (interface{}, error)
+	Decode func([]byte, interface{}) error
 }
 
 // IdentityCoder creates a 'CodingDB' with the identity encoder/decoder. It is an error to append a value
@@ -35,8 +35,14 @@ func IdentityCoder(logdb LogDB) *CodingDB {
 			}
 			return bs, nil
 		},
-		Decode: func(bs []byte) (interface{}, error) {
-			return interface{}(bs), nil
+		Decode: func(bs []byte, data interface{}) error {
+			outSlice, ok := data.([]byte)
+			if !ok {
+				tystr := reflect.TypeOf(data).String()
+				return fmt.Errorf("identity coder can only decode a '[]byte', got %s", tystr)
+			}
+			copy(outSlice, bs)
+			return nil
 		},
 	}
 }
@@ -119,12 +125,12 @@ func (db *CodingDB) Augment(
 		return postEncode(bs)
 	}
 
-	db.Decode = func(bs []byte) (interface{}, error) {
+	db.Decode = func(bs []byte, data interface{}) error {
 		bs2, err := preDecode(bs)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		return oldDecode(bs2)
+		return oldDecode(bs2, data)
 	}
 }
 
@@ -163,10 +169,10 @@ func (db *CodingDB) AppendValues(values interface{}) (uint64, error) {
 }
 
 // GetValue retrieves a value from the underlying 'LogDB' and decodes it.
-func (db *CodingDB) GetValue(id uint64) (interface{}, error) {
+func (db *CodingDB) GetValue(id uint64, data interface{}) error {
 	bs, err := db.Get(id)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return db.Decode(bs)
+	return db.Decode(bs, data)
 }
