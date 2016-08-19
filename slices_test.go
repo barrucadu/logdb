@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestLessFileName(t *testing.T) {
+func TestSlices_LessFileName(t *testing.T) {
 	cmps := [][]string{
 		{"chunk_0_1", "chunk_1_5"},
 		{"chunk_1_5", "chunk_2_8"},
@@ -27,7 +27,7 @@ func TestLessFileName(t *testing.T) {
 	}
 }
 
-func TestSortFileInfoSlice(t *testing.T) {
+func TestSlices_SortFileInfoSlice(t *testing.T) {
 	sorted := []os.FileInfo{
 		&dummyFileInfo{"chunk_0_1"},
 		&dummyFileInfo{"chunk_1_5"},
@@ -53,7 +53,7 @@ func TestSortFileInfoSlice(t *testing.T) {
 	assert.Equal(t, sorted, shuffled)
 }
 
-func TestSortChunkSlice(t *testing.T) {
+func TestSlices_SortChunkSlice(t *testing.T) {
 	sorted := []*chunk{
 		{path: "chunk_0_1"},
 		{path: "chunk_1_5"},

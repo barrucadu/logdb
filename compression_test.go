@@ -15,7 +15,7 @@ var compressTypes = map[string]func() *CompressingDB{
 	"lzw":     func() *CompressingDB { db, _ := CompressLZW(&InMemDB{}, lzw.LSB, 8); return db },
 }
 
-func TestCompressAppend(t *testing.T) {
+func TestCompress_Append(t *testing.T) {
 	for compressName, compressFactory := range compressTypes {
 		t.Logf("Compress: %s\n", compressName)
 		compress := compressFactory()
@@ -37,7 +37,7 @@ func TestCompressAppend(t *testing.T) {
 	}
 }
 
-func TestCompressAppendEntries(t *testing.T) {
+func TestCompress_AppendEntries(t *testing.T) {
 	for compressName, compressFactory := range compressTypes {
 		t.Logf("Compress: %s\n", compressName)
 		compress := compressFactory()

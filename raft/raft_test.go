@@ -19,7 +19,7 @@ var dbTypes = map[string]logdb.LogDB{
 	"inmem":             &logdb.InMemDB{},
 }
 
-func TestEmptyIndices(t *testing.T) {
+func TestRaft_EmptyIndices(t *testing.T) {
 	for dbName, dbType := range dbTypes {
 		t.Logf("Database: %s\n", dbName)
 		func() {
@@ -32,7 +32,7 @@ func TestEmptyIndices(t *testing.T) {
 	}
 }
 
-func TestStoreLog(t *testing.T) {
+func TestRaft_StoreLog(t *testing.T) {
 	for dbName, dbType := range dbTypes {
 		t.Logf("Database: %s\n", dbName)
 		func() {
@@ -64,7 +64,7 @@ func TestStoreLog(t *testing.T) {
 	}
 }
 
-func TestStoreLogs(t *testing.T) {
+func TestRaft_StoreLogs(t *testing.T) {
 	for dbName, dbType := range dbTypes {
 		t.Logf("Database: %s\n", dbName)
 		func() {
@@ -94,7 +94,7 @@ func TestStoreLogs(t *testing.T) {
 	}
 }
 
-func TestDeleteRangeFromStart(t *testing.T) {
+func TestRaft_DeleteRangeFromStart(t *testing.T) {
 	for dbName, dbType := range dbTypes {
 		t.Logf("Database: %s\n", dbName)
 		func() {
@@ -124,7 +124,7 @@ func TestDeleteRangeFromStart(t *testing.T) {
 	}
 }
 
-func TestDeleteRangeFromEnd(t *testing.T) {
+func TestRaft_DeleteRangeFromEnd(t *testing.T) {
 	for dbName, dbType := range dbTypes {
 		t.Logf("Database: %s\n", dbName)
 		func() {
@@ -154,7 +154,7 @@ func TestDeleteRangeFromEnd(t *testing.T) {
 	}
 }
 
-func TestOffset(t *testing.T) {
+func TestRaft_Offset(t *testing.T) {
 	for dbName, dbType := range dbTypes {
 		t.Logf("Database: %s\n", dbName)
 		func() {
@@ -172,7 +172,7 @@ func TestOffset(t *testing.T) {
 	}
 }
 
-func TestPersistOffset(t *testing.T) {
+func TestRaft_PersistOffset(t *testing.T) {
 	for dbName, dbType := range dbTypes {
 		// This test only makes sense for PersistDBs
 		if _, ok := dbType.(logdb.PersistDB); !ok {

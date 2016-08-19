@@ -22,7 +22,7 @@ var dbTypes = map[string]LogDB{
 
 /* ***** OldestID / NewestID */
 
-func TestOneIndexed(t *testing.T) {
+func TestLogDB_OneIndexed(t *testing.T) {
 	for dbName, dbType := range dbTypes {
 		t.Logf("Database: %s\n", dbName)
 		func() {
@@ -39,7 +39,7 @@ func TestOneIndexed(t *testing.T) {
 
 /* ***** Append */
 
-func TestAppend(t *testing.T) {
+func TestLogDB_Append(t *testing.T) {
 	for dbName, dbType := range dbTypes {
 		t.Logf("Database: %s\n", dbName)
 		func() {
@@ -67,7 +67,7 @@ func TestAppend(t *testing.T) {
 	}
 }
 
-func TestAppendEntries(t *testing.T) {
+func TestLogDB_AppendEntries(t *testing.T) {
 	for dbName, dbType := range dbTypes {
 		t.Logf("Database: %s\n", dbName)
 		func() {
@@ -93,7 +93,7 @@ func TestAppendEntries(t *testing.T) {
 	}
 }
 
-func TestNoAppendTooBig(t *testing.T) {
+func TestLogDB_NoAppendTooBig(t *testing.T) {
 	for dbName, dbType := range dbTypes {
 		// This test only makes sense for BoundedDBs
 		if _, ok := dbType.(BoundedDB); !ok {
@@ -113,7 +113,7 @@ func TestNoAppendTooBig(t *testing.T) {
 
 /* ***** Get */
 
-func TestNoGetOutOfRange(t *testing.T) {
+func TestLogDB_NoGetOutOfRange(t *testing.T) {
 	for dbName, dbType := range dbTypes {
 		t.Logf("Database: %s\n", dbName)
 		func() {
@@ -132,7 +132,7 @@ func TestNoGetOutOfRange(t *testing.T) {
 
 /* ***** Forget */
 
-func TestForgetZero(t *testing.T) {
+func TestLogDB_Forget_Zero(t *testing.T) {
 	for dbName, dbType := range dbTypes {
 		t.Logf("Database: %s\n", dbName)
 		func() {
@@ -146,7 +146,7 @@ func TestForgetZero(t *testing.T) {
 	}
 }
 
-func TestForgetOne(t *testing.T) {
+func TestLogDB_Forget_One(t *testing.T) {
 	for dbName, dbType := range dbTypes {
 		t.Logf("Database: %s\n", dbName)
 		func() {
@@ -162,7 +162,7 @@ func TestForgetOne(t *testing.T) {
 	}
 }
 
-func TestForgetFuture(t *testing.T) {
+func TestLogDB_Forget_Future(t *testing.T) {
 	for dbName, dbType := range dbTypes {
 		t.Logf("Database: %s\n", dbName)
 		func() {
@@ -178,7 +178,7 @@ func TestForgetFuture(t *testing.T) {
 	}
 }
 
-func TestForgetPast(t *testing.T) {
+func TestLogDB_Forget_Past(t *testing.T) {
 	for dbName, dbType := range dbTypes {
 		t.Logf("Database: %s\n", dbName)
 		func() {
@@ -194,7 +194,7 @@ func TestForgetPast(t *testing.T) {
 	}
 }
 
-func TestForgetMany(t *testing.T) {
+func TestLogDB_Forget_Many(t *testing.T) {
 	for dbName, dbType := range dbTypes {
 		t.Logf("Database: %s\n", dbName)
 		func() {
@@ -221,7 +221,7 @@ func TestForgetMany(t *testing.T) {
 
 /* ***** Rollback */
 
-func TestRollbackZero(t *testing.T) {
+func TestLogDB_Rollback_Zero(t *testing.T) {
 	for dbName, dbType := range dbTypes {
 		t.Logf("Database: %s\n", dbName)
 		func() {
@@ -235,7 +235,7 @@ func TestRollbackZero(t *testing.T) {
 	}
 }
 
-func TestRollbackOne(t *testing.T) {
+func TestLogDB_Rollback_One(t *testing.T) {
 	for dbName, dbType := range dbTypes {
 		t.Logf("Database: %s\n", dbName)
 		func() {
@@ -251,7 +251,7 @@ func TestRollbackOne(t *testing.T) {
 	}
 }
 
-func TestRollbackFuture(t *testing.T) {
+func TestLogDB_Rollback_Future(t *testing.T) {
 	for dbName, dbType := range dbTypes {
 		t.Logf("Database: %s\n", dbName)
 		func() {
@@ -267,7 +267,7 @@ func TestRollbackFuture(t *testing.T) {
 	}
 }
 
-func TestRollbackPast(t *testing.T) {
+func TestLogDB_Rollback_Past(t *testing.T) {
 	for dbName, dbType := range dbTypes {
 		t.Logf("Database: %s\n", dbName)
 		func() {
@@ -283,7 +283,7 @@ func TestRollbackPast(t *testing.T) {
 	}
 }
 
-func TestRollbackMany(t *testing.T) {
+func TestLogDB_Rollback_Many(t *testing.T) {
 	for dbName, dbType := range dbTypes {
 		t.Logf("Database: %s\n", dbName)
 		func() {
@@ -310,7 +310,7 @@ func TestRollbackMany(t *testing.T) {
 
 /* ***** Truncate */
 
-func TestTruncateZero(t *testing.T) {
+func TestLogDB_Truncate_Zero(t *testing.T) {
 	for dbName, dbType := range dbTypes {
 		t.Logf("Database: %s\n", dbName)
 		func() {
@@ -324,7 +324,7 @@ func TestTruncateZero(t *testing.T) {
 	}
 }
 
-func TestTruncateOne(t *testing.T) {
+func TestLogDB_Truncate_One(t *testing.T) {
 	for dbName, dbType := range dbTypes {
 		t.Logf("Database: %s\n", dbName)
 		func() {
@@ -340,7 +340,7 @@ func TestTruncateOne(t *testing.T) {
 	}
 }
 
-func TestTruncateOldFuture(t *testing.T) {
+func TestLogDB_Truncate_OldFuture(t *testing.T) {
 	for dbName, dbType := range dbTypes {
 		t.Logf("Database: %s\n", dbName)
 		func() {
@@ -356,7 +356,7 @@ func TestTruncateOldFuture(t *testing.T) {
 	}
 }
 
-func TestTruncateNewPast(t *testing.T) {
+func TestLogDB_Truncate_NewPast(t *testing.T) {
 	for dbName, dbType := range dbTypes {
 		t.Logf("Database: %s\n", dbName)
 		func() {
@@ -374,7 +374,7 @@ func TestTruncateNewPast(t *testing.T) {
 	}
 }
 
-func TestTruncateMany(t *testing.T) {
+func TestLogDB_Truncate_Many(t *testing.T) {
 	for dbName, dbType := range dbTypes {
 		t.Logf("Database: %s\n", dbName)
 		func() {
@@ -405,7 +405,7 @@ func TestTruncateMany(t *testing.T) {
 	}
 }
 
-func TestNoTruncateNewLessOld(t *testing.T) {
+func TestLogDB_Truncate_NoNewLessOld(t *testing.T) {
 	for dbName, dbType := range dbTypes {
 		t.Logf("Database: %s\n", dbName)
 		func() {
@@ -423,7 +423,7 @@ func TestNoTruncateNewLessOld(t *testing.T) {
 
 /* ***** Persistence */
 
-func TestPersist(t *testing.T) {
+func TestLogDB_Persist_Works(t *testing.T) {
 	for dbName, dbType := range dbTypes {
 		// This test only makes sense for PersistDBs
 		if _, ok := dbType.(PersistDB); !ok {
@@ -449,7 +449,7 @@ func TestPersist(t *testing.T) {
 	}
 }
 
-func TestPersistTruncate(t *testing.T) {
+func TestLogDB_Persist_Truncate(t *testing.T) {
 	for dbName, dbType := range dbTypes {
 		// This test only makes sense for PersistDBs
 		if _, ok := dbType.(PersistDB); !ok {
@@ -490,7 +490,7 @@ func TestPersistTruncate(t *testing.T) {
 	}
 }
 
-func TestDisablePerioidSync(t *testing.T) {
+func TestLogDB_Persist_DisablePerioid(t *testing.T) {
 	for dbName, dbType := range dbTypes {
 		// This test only makes sense for PersistDBs
 		if _, ok := dbType.(PersistDB); !ok {
@@ -520,7 +520,7 @@ func TestDisablePerioidSync(t *testing.T) {
 	}
 }
 
-func TestExplicitSync(t *testing.T) {
+func TestLogDB_Persist_Explicit(t *testing.T) {
 	for dbName, dbType := range dbTypes {
 		// This test only makes sense for PersistDBs
 		if _, ok := dbType.(PersistDB); !ok {
@@ -547,7 +547,7 @@ func TestExplicitSync(t *testing.T) {
 	}
 }
 
-func TestSetSyncSyncs(t *testing.T) {
+func TestLogDB_Persist_SetPeriodic(t *testing.T) {
 	for dbName, dbType := range dbTypes {
 		// This test only makes sense for PersistDBs
 		if _, ok := dbType.(PersistDB); !ok {
@@ -574,7 +574,7 @@ func TestSetSyncSyncs(t *testing.T) {
 
 /* ***** Closing */
 
-func TestNoUseClosed(t *testing.T) {
+func TestLogDB_NoUseClosed(t *testing.T) {
 	for dbName, dbType := range dbTypes {
 		// This test only makes sense for CloseDBs
 		if _, ok := dbType.(CloseDB); !ok {

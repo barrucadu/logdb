@@ -10,7 +10,7 @@ import (
 
 // These all test the 'LockFreeChunkDB' loading error cases, so there's no need to try other databases.
 
-func TestNoOpenFile(t *testing.T) {
+func TestChunkDB_NoOpenFile(t *testing.T) {
 	if err := writeFile("test_db/no_open_file", uint8(1)); err != nil {
 		t.Fatal("could not write file: ", err)
 	}
@@ -22,12 +22,12 @@ func TestNoOpenFile(t *testing.T) {
 	assert.True(t, errwrap.ContainsType(openErr, ErrNotDirectory))
 }
 
-func TestNoOpenMissing(t *testing.T) {
+func TestChunkDB_NoOpenMissing(t *testing.T) {
 	openErr := assertOpenError(t, false, "no_open_missing")
 	assert.True(t, errwrap.ContainsType(openErr, ErrPathDoesntExist))
 }
 
-func TestNoConcurrentOpen(t *testing.T) {
+func TestChunkDB_NoConcurrentOpen(t *testing.T) {
 	db := assertOpen(t, dbTypes["lock free chunkdb"], true, "no_concurrent_open", chunkSize)
 	_, lockerror := assertOpenError(t, false, "no_concurrent_open").(*LockError)
 	assert.True(t, lockerror, "expected lock error")
@@ -37,7 +37,7 @@ func TestNoConcurrentOpen(t *testing.T) {
 	assertClose(t, db2)
 }
 
-func TestNoOpenBadFiles(t *testing.T) {
+func TestChunkDB_NoOpenBadFiles(t *testing.T) {
 	if err := os.MkdirAll("test_db/no_open_bad_files", os.ModeDir|0755); err != nil {
 		t.Fatal("could not create directory: ", err)
 	}
@@ -59,7 +59,7 @@ func TestNoOpenBadFiles(t *testing.T) {
 	assert.True(t, errwrap.ContainsType(err, ErrUnknownVersion))
 }
 
-func TestCorruptOldest(t *testing.T) {
+func TestChunkDB_CorruptOldest(t *testing.T) {
 	db := assertOpen(t, dbTypes["lock free chunkdb"], true, "corrupt_oldest", chunkSize)
 
 	filldb(t, db, numEntries)
@@ -82,7 +82,7 @@ func TestCorruptOldest(t *testing.T) {
 	assert.Equal(t, uint64(16), db2.OldestID(), "oldest %v", db2.OldestID())
 }
 
-func TestNoEmptyNonfinalChunk(t *testing.T) {
+func TestChunkDB_NoEmptyNonfinalChunk(t *testing.T) {
 	db := assertOpen(t, dbTypes["lock free chunkdb"], true, "no_empty_nonfinal_chunk", chunkSize)
 	filldb(t, db, numEntries)
 	assertClose(t, db)
@@ -94,7 +94,7 @@ func TestNoEmptyNonfinalChunk(t *testing.T) {
 	assert.True(t, errwrap.ContainsType(assertOpenError(t, false, "no_empty_nonfinal_chunk"), ErrEmptyNonfinalChunk))
 }
 
-func TestZeroSizeFinalChunk(t *testing.T) {
+func TestChunkDB_ZeroSizeFinalChunk(t *testing.T) {
 	db := assertOpen(t, dbTypes["lock free chunkdb"], true, "zero_size_final_chunk", chunkSize)
 	assertClose(t, db)
 
@@ -105,7 +105,7 @@ func TestZeroSizeFinalChunk(t *testing.T) {
 	assertClose(t, assertOpen(t, dbTypes["lock free chunkdb"], false, "zero_size_final_chunk", chunkSize))
 }
 
-func TestNoOpenZeroSizeNonfinalChunk(t *testing.T) {
+func TestChunkDB_NoOpenZeroSizeNonfinalChunk(t *testing.T) {
 	db := assertOpen(t, dbTypes["lock free chunkdb"], true, "no_open_zero_size_nonfinal_chunk", chunkSize)
 	filldb(t, db, numEntries)
 	assertClose(t, db)
@@ -117,7 +117,7 @@ func TestNoOpenZeroSizeNonfinalChunk(t *testing.T) {
 	_ = assertOpenError(t, false, "no_open_zero_size_nonfinal_chunk")
 }
 
-func TestMissingMetaFinalChunk(t *testing.T) {
+func TestChunkDB_MissingMetaFinalChunk(t *testing.T) {
 	db := assertOpen(t, dbTypes["lock free chunkdb"], true, "missing_meta_final_chunk", chunkSize)
 	assertClose(t, db)
 
@@ -128,7 +128,7 @@ func TestMissingMetaFinalChunk(t *testing.T) {
 	assertClose(t, assertOpen(t, dbTypes["lock free chunkdb"], false, "missing_meta_final_chunk", chunkSize))
 }
 
-func TestNoOpenMissingMetaNonfinalChunk(t *testing.T) {
+func TestChunkDB_NoOpenMissingMetaNonfinalChunk(t *testing.T) {
 	db := assertOpen(t, dbTypes["lock free chunkdb"], true, "no_open_missing_meta_nonfinal_chunk", chunkSize)
 	filldb(t, db, numEntries)
 	assertClose(t, db)
@@ -140,7 +140,7 @@ func TestNoOpenMissingMetaNonfinalChunk(t *testing.T) {
 	_ = assertOpenError(t, false, "no_open_missing_meta_nonfinal_chunk")
 }
 
-func TestGap(t *testing.T) {
+func TestChunkDB_Gap(t *testing.T) {
 	db := assertOpen(t, dbTypes["lock free chunkdb"], true, "gap", chunkSize)
 	filldb(t, db, numEntries)
 	assertClose(t, db)

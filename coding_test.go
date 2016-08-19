@@ -14,7 +14,7 @@ var coderTypes = map[string]func() *CodingDB{
 	"gob":    func() *CodingDB { return GobCoder(&InMemDB{}) },
 }
 
-func TestAppendValue(t *testing.T) {
+func TestCoding_AppendValue(t *testing.T) {
 	for coderName, coderFactory := range coderTypes {
 		t.Logf("Coder: %s\n", coderName)
 		coder := coderFactory()
@@ -42,7 +42,7 @@ func TestAppendValue(t *testing.T) {
 	}
 }
 
-func TestAppendValues(t *testing.T) {
+func TestCoding_AppendValues(t *testing.T) {
 	for coderName, coderFactory := range coderTypes {
 		t.Logf("Coder: %s\n", coderName)
 		coder := coderFactory()
