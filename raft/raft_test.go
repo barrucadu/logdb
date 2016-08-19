@@ -7,6 +7,7 @@ import (
 
 	"github.com/barrucadu/logdb"
 
+	"github.com/hashicorp/errwrap"
 	"github.com/hashicorp/raft"
 	"github.com/stretchr/testify/assert"
 )
@@ -19,6 +20,21 @@ func TestRaft_EmptyIndices(t *testing.T) {
 
 	assert.Equal(t, uint64(0), assertFirstIndex(t, db))
 	assert.Equal(t, uint64(0), assertLastIndex(t, db))
+}
+
+func TestRaft_GetBeforeStart(t *testing.T) {
+	db := assertOpen(t, dbTypes["lock free chunkdb"], false, true, "get_before_start")
+	defer assertClose(t, db)
+
+	assertStoreLog(t, db, &raft.Log{
+		Index: 10,
+		Term:  0,
+		Type:  raft.LogType(0),
+		Data:  []byte("hello world"),
+	})
+
+	err := assertGetLogError(t, db, 3)
+	assert.True(t, errwrap.ContainsType(err, raft.ErrLogNotFound), "expected log not found error")
 }
 
 func TestRaft_StoreLog(t *testing.T) {
@@ -48,6 +64,50 @@ func TestRaft_StoreLog(t *testing.T) {
 	}
 }
 
+func TestRaft_StoreLog_Discontinuous(t *testing.T) {
+	db := assertOpen(t, dbTypes["lock free chunkdb"], false, true, "store_log_discontinuous")
+	defer assertClose(t, db)
+
+	logs := make([]*raft.Log, numEntries)
+	for i := 0; i < len(logs); i++ {
+		logs[i] = &raft.Log{
+			Index: uint64(i) + 1,
+			Term:  0,
+			Type:  raft.LogType(i),
+			Data:  []byte(fmt.Sprintf("log entry %v", i)),
+		}
+	}
+
+	logs[7].Index = 3
+
+	for i, log := range logs {
+		if i < 7 {
+			assertStoreLog(t, db, log)
+		} else if i == 7 {
+			err := assertStoreLogError(t, db, log)
+			assert.True(t, errwrap.ContainsType(err, new(NonincreasingIndexError)), "expected nonincreasing index error")
+		} else {
+			err := assertStoreLogError(t, db, log)
+			assert.True(t, errwrap.ContainsType(err, new(NoncontiguousIndexError)), "expected noncontiguous index error")
+			break
+		}
+	}
+}
+
+func TestRaft_StoreLog_ZeroIndex(t *testing.T) {
+	db := assertOpen(t, dbTypes["lock free chunkdb"], false, true, "store_log_zero_index")
+	defer assertClose(t, db)
+
+	err := assertStoreLogError(t, db, &raft.Log{
+		Index: 0,
+		Term:  0,
+		Type:  raft.LogType(0),
+		Data:  []byte("hello world"),
+	})
+
+	assert.True(t, errwrap.ContainsType(err, ErrZeroIndex), "expected zero index error")
+}
+
 func TestRaft_StoreLogs(t *testing.T) {
 	db := assertOpen(t, dbTypes["lock free chunkdb"], false, true, "store_logs")
 	defer assertClose(t, db)
@@ -73,8 +133,54 @@ func TestRaft_StoreLogs(t *testing.T) {
 	}
 }
 
-func TestRaft_DeleteRangeFromStart(t *testing.T) {
-	db := assertOpen(t, dbTypes["lock free chunkdb"], false, true, "delete_range_from_start")
+func TestRaft_StoreLogs_Noncontiguous(t *testing.T) {
+	db := assertOpen(t, dbTypes["lock free chunkdb"], false, true, "store_logs_noncontiguous")
+	defer assertClose(t, db)
+
+	logs := make([]*raft.Log, numEntries)
+	for i := 0; i < len(logs); i++ {
+		logs[i] = &raft.Log{
+			Index: uint64(i) + 1,
+			Term:  0,
+			Type:  raft.LogType(i),
+			Data:  []byte(fmt.Sprintf("log entry %v", i)),
+		}
+	}
+
+	logs[7].Index = 9999
+
+	err := assertStoreLogsError(t, db, logs)
+	assert.True(t, errwrap.ContainsType(err, new(NoncontiguousIndexError)), "expected noncontiguous index error")
+
+	assert.Equal(t, uint64(0), assertFirstIndex(t, db))
+	assert.Equal(t, uint64(0), assertLastIndex(t, db))
+}
+
+func TestRaft_StoreLogs_Nonincreasing(t *testing.T) {
+	db := assertOpen(t, dbTypes["lock free chunkdb"], false, true, "store_logs_nonincreasing")
+	defer assertClose(t, db)
+
+	logs := make([]*raft.Log, numEntries)
+	for i := 0; i < len(logs); i++ {
+		logs[i] = &raft.Log{
+			Index: uint64(i) + 1,
+			Term:  0,
+			Type:  raft.LogType(i),
+			Data:  []byte(fmt.Sprintf("log entry %v", i)),
+		}
+	}
+
+	logs[7].Index = 3
+
+	err := assertStoreLogsError(t, db, logs)
+	assert.True(t, errwrap.ContainsType(err, new(NonincreasingIndexError)), "expected nonincreasing index error")
+
+	assert.Equal(t, uint64(0), assertFirstIndex(t, db))
+	assert.Equal(t, uint64(0), assertLastIndex(t, db))
+}
+
+func TestRaft_DeleteRange_Start(t *testing.T) {
+	db := assertOpen(t, dbTypes["lock free chunkdb"], false, true, "delete_range_start")
 	defer assertClose(t, db)
 
 	logs := filldb(t, db)
@@ -98,8 +204,19 @@ func TestRaft_DeleteRangeFromStart(t *testing.T) {
 	}
 }
 
-func TestRaft_DeleteRangeFromEnd(t *testing.T) {
-	db := assertOpen(t, dbTypes["lock free chunkdb"], false, true, "delete_range_from_end")
+func TestRaft_DeleteRange_Middle(t *testing.T) {
+	db := assertOpen(t, dbTypes["lock free chunkdb"], false, true, "delete_range_middle")
+	defer assertClose(t, db)
+
+	filldb(t, db)
+
+	first := assertFirstIndex(t, db)
+	err := assertDeleteRangeError(t, db, first+25, first+50)
+	assert.True(t, errwrap.ContainsType(err, ErrDeleteRange), "expected a delete range error")
+}
+
+func TestRaft_DeleteRange_End(t *testing.T) {
+	db := assertOpen(t, dbTypes["lock free chunkdb"], false, true, "delete_range_end")
 	defer assertClose(t, db)
 
 	logs := filldb(t, db)
@@ -231,10 +348,26 @@ func assertGetLog(t testing.TB, db *LogStore, index uint64) *raft.Log {
 	return log
 }
 
+func assertGetLogError(t testing.TB, db *LogStore, index uint64) error {
+	err := db.GetLog(index, new(raft.Log))
+	if err == nil {
+		t.Fatal("should not be able to get log")
+	}
+	return err
+}
+
 func assertStoreLog(t testing.TB, db *LogStore, log *raft.Log) {
 	if err := db.StoreLog(log); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func assertStoreLogError(t testing.TB, db *LogStore, log *raft.Log) error {
+	err := db.StoreLog(log)
+	if err == nil {
+		t.Fatal("should not be able to store log")
+	}
+	return err
 }
 
 func assertStoreLogs(t testing.TB, db *LogStore, logs []*raft.Log) {
@@ -243,10 +376,26 @@ func assertStoreLogs(t testing.TB, db *LogStore, logs []*raft.Log) {
 	}
 }
 
+func assertStoreLogsError(t testing.TB, db *LogStore, logs []*raft.Log) error {
+	err := db.StoreLogs(logs)
+	if err == nil {
+		t.Fatal("should not be able to store logs")
+	}
+	return err
+}
+
 func assertDeleteRange(t testing.TB, db *LogStore, min, max uint64) {
 	if err := db.DeleteRange(min, max); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func assertDeleteRangeError(t testing.TB, db *LogStore, min, max uint64) error {
+	err := db.DeleteRange(min, max)
+	if err == nil {
+		t.Fatal("should not be able to delete range")
+	}
+	return err
 }
 
 /// UTILITIES

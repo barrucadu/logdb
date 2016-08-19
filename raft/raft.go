@@ -191,10 +191,7 @@ func (l *LogStore) DeleteRange(min, max uint64) error {
 	last := l.LogDB.NewestID() + l.offset
 
 	if min <= first && max >= last {
-		if err := l.LogDB.Rollback(l.LogDB.OldestID()); err != nil {
-			return err
-		}
-		return nil
+		return l.LogDB.Rollback(l.LogDB.OldestID())
 	} else if min <= first {
 		return l.LogDB.Forget(max - l.offset + 1)
 	} else if max >= last {
