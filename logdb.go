@@ -23,7 +23,7 @@ type LogDB interface {
 	Append(entry []byte) (uint64, error)
 
 	// AppendEntries atomically writes a collection of new entries to the log and returns the ID of the
-	// first (the IDs are contiguous).
+	// first (the IDs are contiguous). If the slice is empty or nil, the returned ID is meaningless.
 	//
 	// Returns the same errors as 'Append', and an 'AtomicityError' value if any entry fails to
 	// append and rolling back the log failed.
