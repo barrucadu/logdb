@@ -2,13 +2,10 @@ package logdb
 
 import (
 	"bytes"
-	"compress/flate"
-	"compress/lzw"
 	"encoding/binary"
 	"encoding/gob"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"reflect"
 )
 
@@ -80,93 +77,6 @@ func GobCoder(logdb LogDB) *CodingDB {
 			dec := gob.NewDecoder(bytes.NewReader(bs))
 			return dec.Decode(data)
 		},
-	}
-}
-
-// CompressDEFLATE creates a 'CodingDB' with DEFLATE compression at the given level.
-//
-// Returns an error if the level is < -2 or > 9.
-func CompressDEFLATE(logdb LogDB, level int) (*CodingDB, error) {
-	if level < -2 || level > 9 {
-		return nil, errors.New("flate compression level must be in the range [-2,9]")
-	}
-	db := IdentityCoder(logdb)
-	db.Augment(
-		func(bs []byte) ([]byte, error) {
-			buf := new(bytes.Buffer)
-			w, _ := flate.NewWriter(buf, level)
-			n, err := w.Write(bs)
-			if err != nil {
-				return nil, err
-			}
-			if n < len(bs) {
-				return nil, errors.New("could not compress all bytes")
-			}
-			w.Close()
-			return buf.Bytes(), nil
-		},
-		func(bs []byte) ([]byte, error) {
-			r := flate.NewReader(bytes.NewReader(bs))
-			bs, err := ioutil.ReadAll(r)
-			r.Close()
-			return bs, err
-		},
-	)
-	return db, nil
-}
-
-// CompressLZW creates a 'CodingDB' with LZW compression at the given level.
-func CompressLZW(logdb LogDB, order lzw.Order, litWidth int) *CodingDB {
-	db := IdentityCoder(logdb)
-	db.Augment(
-		func(bs []byte) ([]byte, error) {
-			buf := new(bytes.Buffer)
-			w := lzw.NewWriter(buf, order, litWidth)
-			n, err := w.Write(bs)
-			if err != nil {
-				return nil, err
-			}
-			if n < len(bs) {
-				return nil, errors.New("could not compress all bytes")
-			}
-			w.Close()
-			return buf.Bytes(), nil
-		},
-		func(bs []byte) ([]byte, error) {
-			r := lzw.NewReader(bytes.NewReader(bs), order, litWidth)
-			bs, err := ioutil.ReadAll(r)
-			r.Close()
-			return bs, err
-		},
-	)
-	return db
-}
-
-// Augment modifies the 'Encode' and 'Decode' functions of a 'CodingDB' by post- and pre-composing with the
-// given functions.
-//
-// This is useful for, eg, adding compression to an existing 'CodingDB'.
-func (db *CodingDB) Augment(
-	postEncode func([]byte) ([]byte, error),
-	preDecode func([]byte) ([]byte, error),
-) {
-	oldEncode := db.Encode
-	oldDecode := db.Decode
-
-	db.Encode = func(value interface{}) ([]byte, error) {
-		bs, err := oldEncode(value)
-		if err != nil {
-			return nil, err
-		}
-		return postEncode(bs)
-	}
-
-	db.Decode = func(bs []byte, data interface{}) error {
-		bs2, err := preDecode(bs)
-		if err != nil {
-			return err
-		}
-		return oldDecode(bs2, data)
 	}
 }
 

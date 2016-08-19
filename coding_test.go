@@ -1,8 +1,6 @@
 package logdb
 
 import (
-	"compress/flate"
-	"compress/lzw"
 	"encoding/binary"
 	"fmt"
 	"testing"
@@ -11,16 +9,14 @@ import (
 )
 
 var coderTypes = map[string]func() *CodingDB{
-	"id":      func() *CodingDB { return IdentityCoder(&InMemDB{}) },
-	"deflate": func() *CodingDB { db, _ := CompressDEFLATE(&InMemDB{}, flate.BestCompression); return db },
-	"lzw":     func() *CodingDB { return CompressLZW(&InMemDB{}, lzw.LSB, 8) },
-	"binary":  func() *CodingDB { return BinaryCoder(&InMemDB{}, binary.LittleEndian) },
-	"gob":     func() *CodingDB { return GobCoder(&InMemDB{}) },
+	"id":     func() *CodingDB { return IdentityCoder(&InMemDB{}) },
+	"binary": func() *CodingDB { return BinaryCoder(&InMemDB{}, binary.LittleEndian) },
+	"gob":    func() *CodingDB { return GobCoder(&InMemDB{}) },
 }
 
 func TestAppendValue(t *testing.T) {
 	for coderName, coderFactory := range coderTypes {
-		t.Logf("Database: %s\n", coderName)
+		t.Logf("Coder: %s\n", coderName)
 		coder := coderFactory()
 
 		bss := make([][]byte, 255)
@@ -48,7 +44,7 @@ func TestAppendValue(t *testing.T) {
 
 func TestAppendValues(t *testing.T) {
 	for coderName, coderFactory := range coderTypes {
-		t.Logf("Database: %s\n", coderName)
+		t.Logf("Coder: %s\n", coderName)
 		coder := coderFactory()
 
 		bss := make([][]byte, 255)
