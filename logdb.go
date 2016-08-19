@@ -69,13 +69,16 @@ type LogDB interface {
 }
 
 // A PersistDB is a database which can be persisted in some fashion. In addition to defining methods, a
-// 'PersistDB' which is also a 'LogDB' changes some existing behaviours:
+// 'PersistDB' changes some existing behaviours:
 //
 //  - 'Append', 'AppendEntries', 'Forget', 'Rollback', and 'Truncate' can now cause a 'Sync', if
 //    'SetSync' has been called.
 //
 //  - The above may return a 'SyncError' value if a periodic synchronisation failed.
 type PersistDB interface {
+	// 'PersistDB' is an extension of 'LogDB'.
+	LogDB
+
 	// SetSync configures the database to synchronise the data after touching (appending, forgetting,
 	// or rolling back) at most this many entries.
 	//
@@ -92,10 +95,13 @@ type PersistDB interface {
 	Sync() error
 }
 
-// A BoundedDB has a maximum entry size. A 'BoundedDB' which is also a 'LogDB' changes the behaviour of
-// 'Append' and 'AppendEntries': they now return 'ErrTooBig' if an entry appended is larger than the maximum
-// size.
+// A BoundedDB has a maximum entry size. In addition to defining methods, a 'BoundedDB' changes some the
+// behaviour of 'Append' and 'AppendEntries': they now return 'ErrTooBig' if an entry appended is larger than
+// the maximum size.
 type BoundedDB interface {
+	// 'BoundedDB' is an extension of 'LogDB'.
+	LogDB
+
 	// The maximum size of an entry. It is an error to try to insert an entry larger than this.
 	MaxEntrySize() uint64
 }
@@ -105,6 +111,9 @@ type BoundedDB interface {
 // If a 'CloseDB' is also a 'PersistDB', then 'Sync' should be called during 'Close'. In addition, all
 // 'LogDB' and 'PersistDB' with an error return will fail after calling 'Close', with 'ErrClosed'.
 type CloseDB interface {
+	// 'CloseDB' is an extension of 'LogDB'.
+	LogDB
+
 	// Close performs some database-specific clean-up. It is an error to try to use a database after
 	// closing it.
 	//
