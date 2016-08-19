@@ -1,6 +1,8 @@
 package logdb
 
 import (
+	"compress/flate"
+	"compress/lzw"
 	"fmt"
 	"testing"
 
@@ -9,6 +11,16 @@ import (
 
 var coderTypes = map[string]func() *CodingDB{
 	"id": func() *CodingDB { return NewIdentityCoder(&InMemDB{}) },
+	"deflate": func() *CodingDB {
+		c := NewIdentityCoder(&InMemDB{})
+		c.CompressDEFLATE(flate.BestCompression)
+		return c
+	},
+	"lzw": func() *CodingDB {
+		c := NewIdentityCoder(&InMemDB{})
+		c.CompressLZW(lzw.LSB, 8)
+		return c
+	},
 }
 
 func TestAppendValue(t *testing.T) {
