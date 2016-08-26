@@ -8,7 +8,7 @@ from growing indefinitely, a contiguous chunk of entries can be removed from
 either the beginning or the end.
 
 This library is efficient and provides consistency guarantees: an entry is
-(either stored or it is not, even in the event of power loss during execution
+either stored or it is not, even in the event of power loss during execution
 the database cannot be left in an inconsistent state.
 
 The godoc is [available online][godoc].
